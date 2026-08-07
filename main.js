@@ -18,6 +18,8 @@ const Store = require('electron-store');
 const { autoUpdater } = require('electron-updater');
 const { DEFAULT_SERVICES, SERVICE_DEFAULTS, CHROME_UA } = require('./services');
 const { CATALOG } = require('./catalog');
+const { SVG_SCORE, sniffMime, iconWidth, decodeDataUrl } = require('./images');
+const catalogIcons = require('./catalog-icons');
 
 const REPO_URL = 'https://github.com/MrJOYEN/nexus';
 
@@ -340,81 +342,6 @@ function loadCustomIcon(service) {
   return image.resize({ width: 128, height: 128, quality: 'best' }).toDataURL();
 }
 
-// Score attribue aux icones vectorielles : elles restent nettes a n'importe
-// quelle taille, elles doivent donc battre n'importe quel bitmap.
-const SVG_SCORE = 4096;
-
-/**
- * Determine le vrai format a partir des octets. Les serveurs mentent ou se
- * taisent : web.whatsapp.com sert sa favicon en WebP sans content-type
- * exploitable. Les nombres magiques, eux, ne mentent pas.
- */
-function sniffMime(buffer, fallback) {
-  if (buffer.length >= 4) {
-    if (buffer[0] === 0x00 && buffer[1] === 0x00 && buffer[2] === 0x01 && buffer[3] === 0x00) {
-      return 'image/x-icon';
-    }
-    if (buffer[0] === 0x89 && buffer.toString('latin1', 1, 4) === 'PNG') return 'image/png';
-    if (buffer[0] === 0xff && buffer[1] === 0xd8) return 'image/jpeg';
-    if (buffer.toString('latin1', 0, 4) === 'GIF8') return 'image/gif';
-    if (buffer.toString('latin1', 0, 4) === 'RIFF' && buffer.toString('latin1', 8, 12) === 'WEBP') {
-      return 'image/webp';
-    }
-  }
-
-  if (buffer.toString('utf8', 0, 300).trimStart().startsWith('<')) return 'image/svg+xml';
-  return fallback;
-}
-
-/**
- * Largeur d'un WebP, lue dans son en-tete. nativeImage ne decode pas ce format
- * (Chromium si, l'icone s'affiche donc normalement) et web.whatsapp.com sert sa
- * favicon en WebP : sans ca elle serait scoree 0 et perdrait face a n'importe
- * quelle favicon dynamique de 16px.
- */
-function webpWidth(buffer) {
-  if (buffer.length < 30) return 0;
-
-  switch (buffer.toString('latin1', 12, 16)) {
-    case 'VP8X': // etendu : largeur du canvas sur 3 octets, moins 1
-      return buffer.readUIntLE(24, 3) + 1;
-    case 'VP8 ': // avec perte : 14 bits apres le sync code
-      return buffer.readUInt16LE(26) & 0x3fff;
-    case 'VP8L': // sans perte : 14 bits apres la signature, moins 1
-      return (buffer.readUInt32LE(21) & 0x3fff) + 1;
-    default:
-      return 0;
-  }
-}
-
-/** Score de qualite d'une icone = sa largeur en pixels. */
-function iconWidth(candidate) {
-  if (/svg/i.test(candidate.mime)) return SVG_SCORE;
-  if (/webp/i.test(candidate.mime)) return webpWidth(candidate.buffer);
-
-  // nativeImage ne decode pas les .ico depuis un buffer. Chromium, lui, sait les
-  // afficher et y choisit la meilleure frame : on leur donne un score plancher
-  // honorable, au-dessus des favicons dynamiques 16/32px mais sous un vrai PNG
-  // haute definition.
-  if (/icon/i.test(candidate.mime)) return 128;
-
-  return nativeImage.createFromBuffer(candidate.buffer).getSize().width || 0;
-}
-
-/** Decode une data URI en buffer, pour la comparer aux favicons telechargees. */
-function decodeDataUrl(url) {
-  const match = /^data:([^;,]*)(;base64)?,(.*)$/s.exec(url);
-  if (!match) return null;
-
-  const [, mime, base64, payload] = match;
-  return {
-    mime: mime || 'image/png',
-    buffer: base64
-      ? Buffer.from(payload, 'base64')
-      : Buffer.from(decodeURIComponent(payload), 'utf8'),
-  };
-}
-
 /**
  * Telecharge la favicon du service et la convertit en data URI.
  * Le fetch passe par la session du service : certains sites protegent leurs
@@ -462,7 +389,10 @@ async function fetchFavicon(entry, urls) {
           if (!response.ok) return null;
           const buffer = Buffer.from(await response.arrayBuffer());
           const declared = (response.headers.get('content-type') || '').split(';')[0];
-          return { buffer, mime: sniffMime(buffer, declared || 'image/png') };
+          const mime = sniffMime(buffer, declared || 'image/png');
+          // Une page HTML servie a la place d'une icone : ce n'est pas une
+          // favicon, et la garder afficherait une image cassee.
+          return /html/i.test(mime) ? null : { buffer, mime };
         } catch {
           return null;
         }
@@ -1562,7 +1492,9 @@ ipcMain.handle('hub:bootstrap', () => ({
   services: orderedServices().map(serviceForRenderer),
   activeId,
   version: app.getVersion(),
-  catalog: CATALOG,
+  // Le domaine sert de cle pour les vignettes, chargees a part.
+  catalog: CATALOG.map((entry) => ({ ...entry, domain: catalogIcons.domainOf(entry.url) })),
+  catalogIcons: catalogIcons.known(),
   update: pendingUpdate ? { state: 'ready', version: pendingUpdate } : null,
   // Base servant a composer l'icone du tray avec le compteur par-dessus.
   trayBase: nativeImage.createFromPath(ICON_PATH).resize({ width: 64, height: 64 }).toDataURL(),
@@ -1704,12 +1636,22 @@ app.whenReady().then(() => {
   log('app', `Nexus ${app.getVersion()} — Electron ${process.versions.electron} / Chromium ${process.versions.chrome}`);
   seedServices();
 
+  catalogIcons.init({
+    log,
+    onIcon: (domain, dataUrl) => send('hub:catalog-icon', { domain, dataUrl }),
+  });
+
   const services = allServices();
   log('app', `${services.length} services : ${services.map((s) => s.id).join(', ')}`);
 
   createWindow();
   createTray();
   setupUpdater();
+
+  // Prechargement des vignettes du catalogue, apres le demarrage des services :
+  // la grille doit etre chaude AVANT que le formulaire ne s'ouvre. Un cache
+  // frais ne declenche aucune requete.
+  setTimeout(() => catalogIcons.refresh(CATALOG.map((entry) => entry.url)), 8000);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

@@ -297,8 +297,7 @@ body {
   background: var(--content-bg);
 }
 
-#overlay,
-#modal {
+#overlay {
   position: absolute;
   inset: 0;
   display: flex;
@@ -307,10 +306,15 @@ body {
 }
 
 #modal {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
   background: var(--content-bg);
   overflow-y: auto;
-  padding: 24px;
-  z-index: 5;
+  padding: 28px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
 }
 
 .overlay-card {
@@ -361,23 +365,250 @@ body {
   filter: brightness(1.1);
 }
 
+/* ------------------------------------------------------ galerie / reglages --
+   Deux densites dans une seule vue. Tant qu'aucun service n'est choisi, la
+   galerie occupe toute la place ; la classe .picked sur #modal bascule vers les
+   reglages. */
+
+#picker {
+  width: 100%;
+  max-width: 780px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+#modal.picked #picker {
+  display: none;
+}
+
+.picker-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.picker-head h1 {
+  flex: 1;
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.ghost {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--text-dim);
+  font-size: 21px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ghost:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 13px;
+  border: 1px solid var(--divider);
+  border-radius: 9px;
+  background: var(--surface);
+}
+
+.search-bar:focus-within {
+  border-color: var(--accent);
+}
+
+.search-bar svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--text-dim);
+}
+
+.search-bar input {
+  flex: 1;
+  padding: 11px 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  user-select: text;
+  cursor: text;
+}
+
+.search-bar input:focus {
+  outline: none;
+}
+
+#catalog-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.catalog-category {
+  padding: 10px 2px 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 10px;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  padding: 16px 8px 14px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+.tile:hover {
+  border-color: var(--accent);
+  background: rgba(137, 180, 250, 0.08);
+}
+
+.tile:active {
+  transform: scale(0.97);
+}
+
+.tile:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.tile-name {
+  font-size: 12.5px;
+  text-align: center;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.tile small {
+  font-size: 10.5px;
+  color: var(--text-dim);
+}
+
+.tile.custom {
+  border-style: dashed;
+  border-color: var(--divider);
+}
+
+#catalog-empty {
+  padding: 26px 2px;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+/* Vignette : le logo du site quand on l'a, la pastille de couleur sinon */
+.logo {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: 13px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  overflow: hidden;
+}
+
+.logo.md {
+  width: 44px;
+  height: 44px;
+}
+
+.logo.lg {
+  width: 52px;
+  height: 52px;
+  border-radius: 15px;
+}
+
+.logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  grid-area: 1 / 1;
+}
+
+.logo span {
+  grid-area: 1 / 1;
+}
+
+.logo.has-img {
+  background: none !important;
+}
+
+.logo.has-img span {
+  display: none;
+}
+
 /* ----------------------------------------------------- formulaire service -- */
 
 #service-form {
+  display: none;
   width: 100%;
-  max-width: 460px;
+  max-width: 470px;
   background: var(--surface);
   border: 1px solid var(--divider);
   border-radius: 12px;
-  padding: 26px;
-  display: flex;
+  padding: 24px;
   flex-direction: column;
   gap: 16px;
 }
 
-#service-form h1 {
-  font-size: 17px;
+#modal.picked #service-form {
+  display: flex;
+}
+
+.preview {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.preview-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+  min-width: 0;
+}
+
+.preview-meta b {
+  font-size: 14px;
   font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .field {
@@ -461,53 +692,6 @@ input[type="color"] {
   margin-top: 2px;
   accent-color: var(--accent);
   cursor: pointer;
-}
-
-/* Catalogue : liste de suggestions sous le champ de recherche */
-#catalog-list {
-  list-style: none;
-  margin-top: 6px;
-  max-height: 216px;
-  overflow-y: auto;
-  border: 1px solid var(--divider);
-  border-radius: 6px;
-  background: var(--content-bg);
-}
-
-#catalog-list li {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 7px 10px;
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--text);
-}
-
-#catalog-list li:hover {
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.catalog-dot {
-  width: 26px;
-  height: 26px;
-  flex-shrink: 0;
-  border-radius: 7px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-size: 9px;
-  font-weight: 700;
-}
-
-.catalog-name {
-  flex: 1;
-}
-
-.catalog-category {
-  color: var(--text-dim);
-  font-size: 11px;
 }
 
 #form-error {

@@ -37,78 +37,100 @@
         </div>
       </div>
 
+      <!-- Deux densites, une seule vue : la galerie occupe tout tant qu'aucun
+           service n'est choisi, puis se resserre pour laisser place aux
+           reglages. La classe .picked sur #modal fait la bascule. -->
       <div id="modal" class="hidden">
-        <form id="service-form" autocomplete="off">
-          <h1 id="form-title">Nouveau service</h1>
+        <div id="picker">
+          <header class="picker-head">
+            <h1 id="form-title">Add a service</h1>
+            <button id="form-cancel" type="button" class="ghost" aria-label="Close">&times;</button>
+          </header>
 
-          <div class="field" id="catalog-field">
-            <span>Partir d'un service connu</span>
+          <div class="search-bar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+            </svg>
             <input
               id="f-search"
               type="text"
-              placeholder="WhatsApp, Notion, Spotify, GitHub..."
               autocomplete="off"
+              placeholder="Search services, or paste any address"
             />
-            <ul id="catalog-list" class="hidden"></ul>
-            <small>Facultatif : remplit les champs, que tu peux ensuite ajuster.</small>
+          </div>
+
+          <div id="catalog-grid"></div>
+          <p id="catalog-empty" class="hidden">
+            No match. Paste the address above to add it anyway.
+          </p>
+        </div>
+
+        <form id="service-form" autocomplete="off">
+          <div class="preview">
+            <span class="preview-logo" id="preview-logo"><img alt="" hidden /><span></span></span>
+            <span class="preview-meta">
+              <b id="preview-name">New service</b>
+              <span id="preview-slot">Appears at the end of the sidebar</span>
+            </span>
           </div>
 
           <label class="field">
-            <span>Nom</span>
-            <input id="f-name" type="text" maxlength="60" required placeholder="WhatsApp Perso" />
+            <span>Name</span>
+            <input id="f-name" type="text" maxlength="60" required placeholder="WhatsApp Work" />
           </label>
 
           <label class="field">
-            <span>Adresse</span>
+            <span>Address</span>
             <input id="f-url" type="text" required placeholder="https://web.whatsapp.com" />
           </label>
 
           <div class="row">
             <label class="field">
-              <span>Initiales</span>
-              <input id="f-initials" type="text" maxlength="4" placeholder="WP" />
+              <span>Initials</span>
+              <input id="f-initials" type="text" maxlength="4" placeholder="WW" />
             </label>
             <label class="field color">
-              <span>Couleur</span>
+              <span>Colour</span>
               <input id="f-color" type="color" value="#45475a" />
             </label>
           </div>
 
           <label class="field">
-            <span>Mise en veille automatique</span>
+            <span>Sleep when unused</span>
             <select id="f-hibernate">
-              <option value="0">Jamais</option>
-              <option value="15">Apres 15 minutes</option>
-              <option value="30">Apres 30 minutes</option>
-              <option value="60">Apres 1 heure</option>
-              <option value="180">Apres 3 heures</option>
+              <option value="0">Never</option>
+              <option value="15">After 15 minutes</option>
+              <option value="30">After 30 minutes</option>
+              <option value="60">After 1 hour</option>
+              <option value="180">After 3 hours</option>
             </select>
-            <small>Libere la memoire, mais coupe badges et notifications jusqu'au prochain clic.</small>
+            <small>Frees memory, but stops badges and notifications until you come back.</small>
           </label>
 
           <label class="check">
             <input id="f-spoof" type="checkbox" />
             <span>
-              Se faire passer pour Chrome
-              <small>Necessaire pour WhatsApp, qui refuse les navigateurs Electron.</small>
+              Identify as Chrome
+              <small>Required by WhatsApp, which turns Electron browsers away.</small>
             </span>
           </label>
 
           <label class="check">
             <input id="f-preload" type="checkbox" checked />
             <span>
-              Charger au demarrage
-              <small>Sans ca, aucun badge ni notification avant la premiere ouverture.</small>
+              Load at startup
+              <small>Without it, no badge and no notification until you first open it.</small>
             </span>
           </label>
 
           <p id="form-error" class="hidden"></p>
 
           <div class="form-actions">
-            <button id="form-delete" class="danger hidden" type="button">Supprimer</button>
+            <button id="form-delete" class="danger hidden" type="button">Delete</button>
             <span class="spacer"></span>
-            <button id="form-cancel" type="button">Annuler</button>
-            <button id="form-save" class="primary" type="submit">Enregistrer</button>
+            <button id="form-back" type="button">Back</button>
+            <button id="form-save" class="primary" type="submit">Add service</button>
           </div>
         </form>
       </div>

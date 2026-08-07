@@ -13,13 +13,21 @@ const addButton = document.getElementById('add-btn');
 const updateButton = document.getElementById('update-btn');
 
 const modal = document.getElementById('modal');
-const form = document.getElementById('service-form');
+const picker = document.getElementById('picker');
+const catalogGrid = document.getElementById('catalog-grid');
+const catalogEmpty = document.getElementById('catalog-empty');
+const searchInput = document.getElementById('f-search');
 const formTitle = document.getElementById('form-title');
+
+const form = document.getElementById('service-form');
 const formError = document.getElementById('form-error');
 const formDelete = document.getElementById('form-delete');
-const catalogField = document.getElementById('catalog-field');
-const catalogList = document.getElementById('catalog-list');
-const catalogSearch = document.getElementById('f-search');
+const formBack = document.getElementById('form-back');
+const formSave = document.getElementById('form-save');
+
+const previewLogo = document.getElementById('preview-logo');
+const previewName = document.getElementById('preview-name');
+const previewSlot = document.getElementById('preview-slot');
 
 const fields = {
   name: document.getElementById('f-name'),
@@ -39,6 +47,10 @@ const badges = new Map();
 let activeId = null;
 let editingId = null;
 let catalog = [];
+let catalogIcons = {};
+/** domaine -> elements affiches, pour les mettre a jour quand l'icone arrive. */
+let tilesByDomain = new Map();
+let pickedIcon = null;
 
 // ---------------------------------------------------------------------------
 // Rendu de la sidebar
@@ -66,7 +78,6 @@ function renderSidebar(services) {
     const img = document.createElement('img');
     img.alt = '';
     img.hidden = true;
-    // Si l'icone est cassee, on retombe proprement sur les initiales.
     img.addEventListener('error', () => {
       img.hidden = true;
       el.classList.remove('has-icon');
@@ -80,7 +91,7 @@ function renderSidebar(services) {
 
     // Pastille d'initiales, affichee uniquement quand une icone automatique
     // remplace l'avatar : c'est la que deux services peuvent etre
-    // indiscernables (trois WhatsApp partagent la meme favicon).
+    // indiscernables (plusieurs comptes partagent la meme favicon).
     const chip = document.createElement('span');
     chip.className = 'chip';
     chip.textContent = service.initials;
@@ -383,7 +394,11 @@ overlayRetry.addEventListener('click', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Formulaire de service
+// Catalogue
+//
+// Deux densites dans une seule vue : la galerie occupe tout l'espace tant
+// qu'aucun service n'est choisi, puis cede la place aux reglages. Rien n'est
+// masque a la va-vite — c'est la meme boite qui change d'etat.
 // ---------------------------------------------------------------------------
 
 /** Compare sans accents ni casse : "productivite" doit matcher "Productivité". */
@@ -394,95 +409,253 @@ function normalize(text) {
     .replace(/[̀-ͯ]/g, '');
 }
 
-function renderCatalog(query) {
-  const needle = normalize(query).trim();
-  catalogList.innerHTML = '';
-
-  if (!needle) {
-    catalogList.classList.add('hidden');
-    return;
-  }
-
-  const matches = catalog
-    .filter((entry) => normalize(`${entry.name} ${entry.category}`).includes(needle))
-    .slice(0, 8);
-
-  if (!matches.length) {
-    catalogList.classList.add('hidden');
-    return;
-  }
-
-  for (const entry of matches) {
-    const li = document.createElement('li');
-
-    const dot = document.createElement('span');
-    dot.className = 'catalog-dot';
-    dot.style.setProperty('background', entry.color);
-    dot.textContent = entry.initials;
-
-    const label = document.createElement('span');
-    label.className = 'catalog-name';
-    label.textContent = entry.name;
-
-    const category = document.createElement('span');
-    category.className = 'catalog-category';
-    category.textContent = entry.category;
-
-    li.append(dot, label, category);
-    li.addEventListener('click', () => applyCatalogEntry(entry));
-    catalogList.append(li);
-  }
-
-  catalogList.classList.remove('hidden');
+/** Une saisie qui ressemble a une adresse : "slack.com", "https://x.fr/app". */
+function looksLikeUrl(text) {
+  const value = (text || '').trim();
+  return /^https?:\/\/\S+$/i.test(value) || /^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(value);
 }
 
-/** Prefixe les champs ; tout reste modifiable avant enregistrement. */
-function applyCatalogEntry(entry) {
-  fields.name.value = entry.name;
-  fields.url.value = entry.url;
-  fields.initials.value = entry.initials;
-  fields.color.value = entry.color;
-  fields.spoof.checked = Boolean(entry.spoof);
+/** Vignette : le logo du site s'il est connu, sinon la pastille de couleur. */
+function buildLogo(entry, size) {
+  const logo = document.createElement('span');
+  logo.className = `logo ${size}`;
+  logo.style.setProperty('background', entry.color || '#45475a');
 
-  catalogSearch.value = '';
-  catalogList.classList.add('hidden');
+  const img = document.createElement('img');
+  img.alt = '';
+  img.hidden = true;
+  img.addEventListener('error', () => {
+    img.hidden = true;
+    logo.classList.remove('has-img');
+  });
+
+  const text = document.createElement('span');
+  text.textContent = entry.initials || '';
+
+  logo.append(img, text);
+
+  const dataUrl = catalogIcons[entry.domain];
+  if (dataUrl) {
+    img.src = dataUrl;
+    img.hidden = false;
+    logo.classList.add('has-img');
+  }
+
+  if (entry.domain) {
+    const list = tilesByDomain.get(entry.domain) || [];
+    list.push(logo);
+    tilesByDomain.set(entry.domain, list);
+  }
+
+  return logo;
+}
+
+/** Une vignette arrivee en tache de fond remplit les emplacements deja rendus. */
+function applyCatalogIcon(domain, dataUrl) {
+  catalogIcons[domain] = dataUrl;
+
+  for (const logo of tilesByDomain.get(domain) || []) {
+    const img = logo.querySelector('img');
+    img.src = dataUrl;
+    img.hidden = false;
+    logo.classList.add('has-img');
+  }
+}
+
+function buildTile(entry) {
+  const tile = document.createElement('button');
+  tile.className = 'tile';
+  tile.type = 'button';
+
+  const name = document.createElement('span');
+  name.className = 'tile-name';
+  name.textContent = entry.name;
+
+  tile.append(buildLogo(entry, 'md'), name);
+  tile.addEventListener('click', () => pickCatalogEntry(entry));
+  return tile;
+}
+
+function renderCatalog(query) {
+  const needle = normalize(query).trim();
+  catalogGrid.innerHTML = '';
+  tilesByDomain = new Map();
+
+  // Une adresse saisie a la main passe avant tout le reste : c'est une intention
+  // explicite, pas une recherche.
+  if (looksLikeUrl(query)) {
+    const custom = {
+      name: query.trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, ''),
+      url: query.trim(),
+      color: '#45475a',
+      initials: '',
+    };
+
+    const tile = document.createElement('button');
+    tile.className = 'tile custom';
+    tile.type = 'button';
+
+    const label = document.createElement('span');
+    label.className = 'tile-name';
+    label.textContent = custom.name;
+
+    const hint = document.createElement('small');
+    hint.textContent = 'Custom address';
+
+    tile.append(buildLogo({ ...custom, initials: '+' }, 'md'), label, hint);
+    tile.addEventListener('click', () => pickCatalogEntry(custom));
+    catalogGrid.append(tile);
+  }
+
+  const matches = needle
+    ? catalog.filter((entry) => normalize(`${entry.name} ${entry.category}`).includes(needle))
+    : catalog;
+
+  // Sans recherche, la galerie garde ses rubriques : c'est ce qui la rend
+  // parcourable. Des la premiere lettre, elles n'ont plus de sens et on passe a
+  // une grille de resultats a plat.
+  if (!needle) {
+    let current = null;
+    let group = null;
+
+    for (const entry of matches) {
+      if (entry.category !== current) {
+        current = entry.category;
+        const label = document.createElement('p');
+        label.className = 'catalog-category';
+        label.textContent = current;
+        catalogGrid.append(label);
+
+        group = document.createElement('div');
+        group.className = 'tiles';
+        catalogGrid.append(group);
+      }
+      group.append(buildTile(entry));
+    }
+  } else if (matches.length) {
+    const group = document.createElement('div');
+    group.className = 'tiles';
+    for (const entry of matches) group.append(buildTile(entry));
+    catalogGrid.append(group);
+  }
+
+  catalogEmpty.classList.toggle('hidden', Boolean(matches.length) || looksLikeUrl(query));
+}
+
+/** Passage de la galerie aux reglages, avec les champs preremplis. */
+function pickCatalogEntry(entry) {
+  fields.name.value = entry.name || '';
+  fields.url.value = entry.url || '';
+  fields.initials.value = entry.initials || (entry.name || '').slice(0, 2).toUpperCase();
+  fields.color.value = entry.color || '#45475a';
+  fields.spoof.checked = Boolean(entry.spoof);
+  pickedIcon = catalogIcons[entry.domain] || null;
+
+  modal.classList.add('picked');
+  refreshPreview();
   fields.name.focus();
   fields.name.select();
 }
 
-catalogSearch.addEventListener('input', () => renderCatalog(catalogSearch.value));
+searchInput.addEventListener('input', () => renderCatalog(searchInput.value));
+
+searchInput.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+
+  // Entree valide le premier resultat : c'est le chemin le plus court quand on
+  // sait deja ce qu'on cherche.
+  const first = catalogGrid.querySelector('.tile');
+  if (first) first.click();
+});
+
+// ---------------------------------------------------------------------------
+// Formulaire de service
+// ---------------------------------------------------------------------------
+
+function refreshPreview() {
+  const name = fields.name.value.trim();
+  previewName.textContent = name || 'New service';
+
+  const img = previewLogo.querySelector('img');
+  const text = previewLogo.querySelector('span');
+
+  previewLogo.style.setProperty('background', fields.color.value);
+  text.textContent = fields.initials.value || name.slice(0, 2).toUpperCase();
+
+  if (pickedIcon) {
+    img.src = pickedIcon;
+    img.hidden = false;
+    previewLogo.classList.add('has-img');
+  } else {
+    img.removeAttribute('src');
+    img.hidden = true;
+    previewLogo.classList.remove('has-img');
+  }
+}
+
+for (const field of [fields.name, fields.initials, fields.color]) {
+  field.addEventListener('input', refreshPreview);
+}
 
 function openForm(service) {
   editingId = service ? service.id : null;
-
-  // Le catalogue n'a de sens qu'a la creation : sur une edition, il ecraserait
-  // des reglages deja etablis.
-  catalogField.classList.toggle('hidden', Boolean(service));
-  catalogSearch.value = '';
-  catalogList.classList.add('hidden');
-
-  formTitle.textContent = service ? `Modifier ${service.name}` : 'Nouveau service';
-  fields.name.value = service?.name || '';
-  fields.url.value = service?.url || '';
-  fields.initials.value = service?.initials || '';
-  fields.color.value = service?.color || '#45475a';
-  fields.hibernate.value = String(service?.hibernateAfter ?? 0);
-  fields.spoof.checked = Boolean(service?.spoofUserAgent);
-  fields.preload.checked = service ? service.preload !== false : true;
+  pickedIcon = service?.dataUrl || null;
 
   formError.classList.add('hidden');
   formDelete.classList.toggle('hidden', !service);
 
+  if (service) {
+    // Edition : le catalogue n'a rien a faire la, il ecraserait des reglages
+    // deja etablis.
+    modal.classList.add('picked');
+    formTitle.textContent = service.name;
+    formSave.textContent = 'Save';
+    formBack.textContent = 'Cancel';
+
+    fields.name.value = service.name || '';
+    fields.url.value = service.url || '';
+    fields.initials.value = service.initials || '';
+    fields.color.value = service.color || '#45475a';
+    fields.hibernate.value = String(service.hibernateAfter ?? 0);
+    fields.spoof.checked = Boolean(service.spoofUserAgent);
+    fields.preload.checked = service.preload !== false;
+
+    const index = [...items.keys()].indexOf(service.id);
+    previewSlot.textContent =
+      index >= 0 && index < 9 ? `Position ${index + 1} · Ctrl+${index + 1}` : 'In the sidebar';
+  } else {
+    modal.classList.remove('picked');
+    formTitle.textContent = 'Add a service';
+    formSave.textContent = 'Add service';
+    formBack.textContent = 'Back';
+
+    fields.name.value = '';
+    fields.url.value = '';
+    fields.initials.value = '';
+    fields.color.value = '#45475a';
+    fields.hibernate.value = '0';
+    fields.spoof.checked = false;
+    fields.preload.checked = true;
+
+    previewSlot.textContent = 'Appears at the end of the sidebar';
+    searchInput.value = '';
+    renderCatalog('');
+  }
+
+  refreshPreview();
   modal.classList.remove('hidden');
   // Sans ca le formulaire resterait cache derriere la vue du service.
   window.hub.setModalOpen(true);
-  fields.name.focus();
+  (service ? fields.name : searchInput).focus();
 }
 
 function closeForm() {
   modal.classList.add('hidden');
+  modal.classList.remove('picked');
   window.hub.setModalOpen(false);
   editingId = null;
+  pickedIcon = null;
 }
 
 form.addEventListener('submit', async (event) => {
@@ -510,16 +683,29 @@ form.addEventListener('submit', async (event) => {
 
 formDelete.addEventListener('click', async () => {
   if (!editingId) return;
-  // La confirmation est une boite native, cote main : la vue reste escamotee
-  // tant que le formulaire est ouvert, donc rien a masquer de plus ici.
   const result = await window.hub.deleteService(editingId);
   if (result?.ok) closeForm();
+});
+
+// En creation, "Back" ramene a la galerie ; en edition, il annule.
+formBack.addEventListener('click', () => {
+  if (editingId) return closeForm();
+  modal.classList.remove('picked');
+  searchInput.focus();
 });
 
 document.getElementById('form-cancel').addEventListener('click', closeForm);
 
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && !modal.classList.contains('hidden')) closeForm();
+  if (event.key !== 'Escape' || modal.classList.contains('hidden')) return;
+  // Echap recule d'un cran plutot que de tout fermer : on ne perd pas sa
+  // recherche parce qu'on s'est trompe de service.
+  if (!editingId && modal.classList.contains('picked')) {
+    modal.classList.remove('picked');
+    searchInput.focus();
+    return;
+  }
+  closeForm();
 });
 
 addButton.addEventListener('click', () => openForm(null));
@@ -543,13 +729,17 @@ function showUpdate(update) {
   const boot = await window.hub.bootstrap();
   if (boot.trayBase) trayBase.src = boot.trayBase;
   catalog = boot.catalog || [];
+  catalogIcons = boot.catalogIcons || {};
 
   activeId = boot.activeId;
   renderSidebar(boot.services);
   if (boot.activeId) setActive(boot.activeId);
   showUpdate(boot.update);
 
-  console.log(`[sidebar] Nexus ${boot.version}`);
+  console.log(
+    `[sidebar] Nexus ${boot.version} — catalogue : ${catalog.length} services, ` +
+      `${Object.keys(catalogIcons).length} vignettes en cache`
+  );
 
   window.hub.onStatus(({ id, status, message }) => setStatus(id, status, message));
   window.hub.onActive(({ id }) => setActive(id));
@@ -557,6 +747,7 @@ function showUpdate(update) {
   window.hub.onIcon(({ id, dataUrl, source }) => setIcon(id, dataUrl, source));
   window.hub.onOrder(({ order }) => applyOrder(order));
   window.hub.onServices(({ services }) => renderSidebar(services));
+  window.hub.onCatalogIcon(({ domain, dataUrl }) => applyCatalogIcon(domain, dataUrl));
   window.hub.onEditService(({ id }) => {
     const item = items.get(id);
     if (item) openForm(item.service);

@@ -69,6 +69,9 @@ contextBridge.exposeInMainWorld('hub', {
   /** Le menu Fichier demande le formulaire de creation. */
   onNewService: (callback) => on('hub:new-service', callback),
 
+  /** { domain, dataUrl } - vignette de catalogue arrivee en tache de fond. */
+  onCatalogIcon: (callback) => on('hub:catalog-icon', callback),
+
   /** { state: 'downloading' | 'ready', version } */
   onUpdate: (callback) => on('hub:update', callback),
 });

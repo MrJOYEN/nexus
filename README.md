@@ -236,9 +236,44 @@ Le service obtient sa **propre partition de session** des sa creation, donc une
 session etanche : c'est ce qui permet d'ajouter un quatrieme WhatsApp sur un
 quatrieme numero.
 
-Le catalogue ne contient **aucune icone**, volontairement : ce seraient des logos
-de marque, avec ce que ca implique juridiquement, et ils dateraient. La favicon
-du site est recuperee au premier chargement, donc toujours a jour.
+### Les vignettes du catalogue
+
+Ce sont les **vrais logos** — Telegram, Discord, Gmail — pas des pastilles
+d'initiales. Ils ne sont simplement pas embarques dans l'app : ils seraient
+figes, alors que les marques changent (Twitter est devenu X, Slack a change de
+marque). Ils sont recuperes depuis le site de chaque service, mis en cache sur
+disque, et rafraichis **une fois par mois**.
+
+Pour chaque domaine, plusieurs candidats sont essayes dans l'ordre :
+`apple-touch-icon.png` (generalement 180px, present sur la plupart des sites
+modernes), le service d'icones de DuckDuckGo, puis `favicon.ico` — et enfin les
+memes sur le domaine racine, car beaucoup de services vivent sur un sous-domaine
+applicatif qui n'expose rien (`app.intercom.com`, `web.skype.com`). Le premier
+qui atteint 128px l'emporte, sinon le plus grand.
+
+Piege reel rencontre la : une application monopage renvoie son `index.html` en
+**200** sur n'importe quel chemin inconnu. `/apple-touch-icon.png` retourne donc
+une page complete, que le detecteur de format prenait pour du SVG — donc pour la
+meilleure candidate de toutes. Cinq services affichaient une image cassee. Le
+detecteur distingue maintenant `<svg` de `<!doctype html>`.
+
+Le prechargement demarre **8 secondes apres le lancement**, une fois les services
+en route. C'est deliberе : une grille qui se remplit sous les yeux de
+l'utilisateur fait aussi pauvre que pas de logo du tout, donc tout doit etre en
+cache avant qu'il n'ouvre le formulaire. Un cache frais ne declenche aucune
+requete au demarrage suivant.
+
+Cache dans `%APPDATA%\Nexus\catalog-icons.json`. Les echecs sont memorises comme
+tels, pour ne pas retenter cinquante-sept domaines a chaque lancement.
+
+Deux reductions avant stockage, sans quoi le cache depasse le megaoctet et
+transite en entier vers le renderer a chaque demarrage :
+
+- un `.ico` est un **conteneur** qui embarque la meme icone en 16, 32, 48, 128 et
+  256px. On n'en affiche qu'une : `readIco` lit la table des matieres et ne garde
+  que la plus grande frame, quand elle est deja en PNG ;
+- les bitmaps au-dela de 192px sont ramenes a 128, largement assez pour un
+  affichage a 44px.
 
 Si un service ajoute affiche "navigateur non supporte", cocher **Se faire passer
 pour Chrome** dans son formulaire. Seul WhatsApp est marque comme tel dans le
