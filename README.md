@@ -17,6 +17,8 @@ c'est fait.
 
 | Raccourci        | Action                                                  |
 | ---------------- | ------------------------------------------------------- |
+| `Alt`            | Afficher la barre de menus                              |
+| `Ctrl+N`         | Nouveau service                                         |
 | `Ctrl+1` … `Ctrl+9` | Basculer sur le service N (ordre de la sidebar)      |
 | `Ctrl+R`         | Recharger le service actif                              |
 | `Ctrl+Shift+R`   | Hard reload : vide le cache de la partition puis recharge |
@@ -27,6 +29,22 @@ c'est fait.
 Les raccourcis passent par `before-input-event` (branche sur la sidebar **et** sur
 chaque vue de service) plutot que par `globalShortcut` : ils ne fonctionnent que
 quand l'app a le focus, et ne volent donc pas `Ctrl+1` au reste du systeme.
+
+## Barre de menus
+
+Masquee par defaut, **revelee par `Alt`** : l'app reste epuree sans priver d'un
+point d'entree conventionnel vers _A propos_, les mises a jour, la documentation
+et le report de bug. Les memes entrees essentielles sont dans le menu du tray.
+
+_A propos_ affiche les versions de Nexus, Electron, Chromium et Node, avec un
+bouton pour les copier — c'est la premiere chose qu'on demande dans un rapport de
+bug, et personne ne sait les retrouver autrement.
+
+Detail d'implementation qui a son importance : les entrees de menu declarent leur
+raccourci avec `registerAccelerator: false`. Le raccourci s'**affiche** dans le
+menu mais n'est pas capte par lui — sans quoi chaque frappe serait traitee deux
+fois, par le menu et par `before-input-event`. Un `Ctrl+Shift+I` aurait ouvert
+puis referme les DevTools dans la foulee.
 
 ## Ordre des services
 
@@ -149,6 +167,7 @@ c'est normal — "Informations complementaires" > "Executer quand meme".
 main.js       process principal : fenetre, sessions isolees, WebContentsView, IPC
 preload.js    bridge contextBridge (window.hub) - seule surface exposee au renderer
 services.js   semence : services livres par defaut, copies dans config.json au 1er run
+catalog.js    catalogue de services proposes a l'ajout (aide a la saisie)
 renderer/     sidebar en HTML/CSS/JS vanilla (= webContents de la BrowserWindow)
 ```
 
@@ -207,11 +226,23 @@ chargement. La veille, elle, decharge un service deja demarre, encore et encore.
 
 ## Ajouter un service
 
-**Depuis l'app** : bouton `+` en bas de la sidebar. Nom, adresse, initiales,
-couleur, delai de veille, et deux options — se faire passer pour Chrome (requis
-par WhatsApp) et charger au demarrage. Le service obtient sa **propre partition
-de session** des sa creation, donc une session etanche : c'est ce qui permet
-d'ajouter un quatrieme WhatsApp sur un quatrieme numero.
+**Depuis l'app** : bouton `+` en bas de la sidebar, ou _Fichier > Nouveau
+service_. Un champ de recherche propose une **cinquantaine de services connus**
+(`catalog.js`) et prerremplit nom, adresse, couleur et initiales — tout reste
+modifiable avant enregistrement. Pour un service absent du catalogue, ignorer la
+recherche et saisir l'adresse.
+
+Le service obtient sa **propre partition de session** des sa creation, donc une
+session etanche : c'est ce qui permet d'ajouter un quatrieme WhatsApp sur un
+quatrieme numero.
+
+Le catalogue ne contient **aucune icone**, volontairement : ce seraient des logos
+de marque, avec ce que ca implique juridiquement, et ils dateraient. La favicon
+du site est recuperee au premier chargement, donc toujours a jour.
+
+Si un service ajoute affiche "navigateur non supporte", cocher **Se faire passer
+pour Chrome** dans son formulaire. Seul WhatsApp est marque comme tel dans le
+catalogue a ce jour ; les contributions sont bienvenues.
 
 Clic droit sur une icone > _Modifier_ pour rouvrir le formulaire, _Supprimer_
 pour la retirer (avec une case a cocher pour effacer aussi les donnees de session).
@@ -449,7 +480,8 @@ par exemple) sans repartir de zero sur ta vraie configuration.
 - **Sessions etanches** — une partition par service, donc plusieurs comptes du
   meme service connectes en parallele.
 - **Services editables depuis l'app** — creation, edition, suppression,
-  reordonnancement par glisser-deposer.
+  reordonnancement par glisser-deposer, avec un catalogue d'une cinquantaine de
+  services connus pour eviter d'aller chercher les URLs.
 - **Notifications Windows natives**, coupables service par service — y compris
   le son joue par la page, que l'API de notification ne controle pas.
 - **Compteurs de non-lus** sur l'icone de la sidebar, la barre des taches et le

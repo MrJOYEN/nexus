@@ -66,6 +66,9 @@ contextBridge.exposeInMainWorld('hub', {
   /** { id } - le menu contextuel demande l'ouverture du formulaire d'edition. */
   onEditService: (callback) => on('hub:edit-service', callback),
 
+  /** Le menu Fichier demande le formulaire de creation. */
+  onNewService: (callback) => on('hub:new-service', callback),
+
   /** { state: 'downloading' | 'ready', version } */
   onUpdate: (callback) => on('hub:update', callback),
 });

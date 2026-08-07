@@ -17,6 +17,10 @@ const form = document.getElementById('service-form');
 const formTitle = document.getElementById('form-title');
 const formError = document.getElementById('form-error');
 const formDelete = document.getElementById('form-delete');
+const catalogField = document.getElementById('catalog-field');
+const catalogList = document.getElementById('catalog-list');
+const catalogSearch = document.getElementById('f-search');
+
 const fields = {
   name: document.getElementById('f-name'),
   url: document.getElementById('f-url'),
@@ -34,6 +38,7 @@ const badges = new Map();
 
 let activeId = null;
 let editingId = null;
+let catalog = [];
 
 // ---------------------------------------------------------------------------
 // Rendu de la sidebar
@@ -381,8 +386,80 @@ overlayRetry.addEventListener('click', () => {
 // Formulaire de service
 // ---------------------------------------------------------------------------
 
+/** Compare sans accents ni casse : "productivite" doit matcher "Productivité". */
+function normalize(text) {
+  return (text || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '');
+}
+
+function renderCatalog(query) {
+  const needle = normalize(query).trim();
+  catalogList.innerHTML = '';
+
+  if (!needle) {
+    catalogList.classList.add('hidden');
+    return;
+  }
+
+  const matches = catalog
+    .filter((entry) => normalize(`${entry.name} ${entry.category}`).includes(needle))
+    .slice(0, 8);
+
+  if (!matches.length) {
+    catalogList.classList.add('hidden');
+    return;
+  }
+
+  for (const entry of matches) {
+    const li = document.createElement('li');
+
+    const dot = document.createElement('span');
+    dot.className = 'catalog-dot';
+    dot.style.setProperty('background', entry.color);
+    dot.textContent = entry.initials;
+
+    const label = document.createElement('span');
+    label.className = 'catalog-name';
+    label.textContent = entry.name;
+
+    const category = document.createElement('span');
+    category.className = 'catalog-category';
+    category.textContent = entry.category;
+
+    li.append(dot, label, category);
+    li.addEventListener('click', () => applyCatalogEntry(entry));
+    catalogList.append(li);
+  }
+
+  catalogList.classList.remove('hidden');
+}
+
+/** Prefixe les champs ; tout reste modifiable avant enregistrement. */
+function applyCatalogEntry(entry) {
+  fields.name.value = entry.name;
+  fields.url.value = entry.url;
+  fields.initials.value = entry.initials;
+  fields.color.value = entry.color;
+  fields.spoof.checked = Boolean(entry.spoof);
+
+  catalogSearch.value = '';
+  catalogList.classList.add('hidden');
+  fields.name.focus();
+  fields.name.select();
+}
+
+catalogSearch.addEventListener('input', () => renderCatalog(catalogSearch.value));
+
 function openForm(service) {
   editingId = service ? service.id : null;
+
+  // Le catalogue n'a de sens qu'a la creation : sur une edition, il ecraserait
+  // des reglages deja etablis.
+  catalogField.classList.toggle('hidden', Boolean(service));
+  catalogSearch.value = '';
+  catalogList.classList.add('hidden');
 
   formTitle.textContent = service ? `Modifier ${service.name}` : 'Nouveau service';
   fields.name.value = service?.name || '';
@@ -465,6 +542,7 @@ function showUpdate(update) {
 (async () => {
   const boot = await window.hub.bootstrap();
   if (boot.trayBase) trayBase.src = boot.trayBase;
+  catalog = boot.catalog || [];
 
   activeId = boot.activeId;
   renderSidebar(boot.services);
@@ -483,5 +561,6 @@ function showUpdate(update) {
     const item = items.get(id);
     if (item) openForm(item.service);
   });
+  window.hub.onNewService(() => openForm(null));
   window.hub.onUpdate(showUpdate);
 })();

@@ -41,6 +41,18 @@
         <form id="service-form" autocomplete="off">
           <h1 id="form-title">Nouveau service</h1>
 
+          <div class="field" id="catalog-field">
+            <span>Partir d'un service connu</span>
+            <input
+              id="f-search"
+              type="text"
+              placeholder="WhatsApp, Notion, Spotify, GitHub..."
+              autocomplete="off"
+            />
+            <ul id="catalog-list" class="hidden"></ul>
+            <small>Facultatif : remplit les champs, que tu peux ensuite ajuster.</small>
+          </div>
+
           <label class="field">
             <span>Nom</span>
             <input id="f-name" type="text" maxlength="60" required placeholder="WhatsApp Perso" />

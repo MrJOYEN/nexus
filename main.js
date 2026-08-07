@@ -11,11 +11,15 @@ const {
   shell,
   dialog,
   ipcMain,
+  clipboard,
   nativeImage,
 } = require('electron');
 const Store = require('electron-store');
 const { autoUpdater } = require('electron-updater');
 const { DEFAULT_SERVICES, SERVICE_DEFAULTS, CHROME_UA } = require('./services');
+const { CATALOG } = require('./catalog');
+
+const REPO_URL = 'https://github.com/MrJOYEN/nexus';
 
 const SIDEBAR_WIDTH = 68; // doit rester synchro avec --sidebar-width dans renderer/style.css
 const LOAD_TIMEOUT_MS = 15000; // au-dela, on affiche le bouton "Reessayer"
@@ -907,6 +911,12 @@ function handleShortcut(event, input) {
     return;
   }
 
+  if (key === 'n' && !input.shift) {
+    event.preventDefault();
+    send('hub:new-service', {});
+    return;
+  }
+
   if (key === 'r' && activeEntry) {
     event.preventDefault();
     if (input.shift) {
@@ -991,6 +1001,7 @@ function refreshTrayMenu() {
 
   template.push(
     { type: 'separator' },
+    { label: 'A propos de Nexus', click: showAbout },
     { label: 'Quitter', accelerator: 'CommandOrControl+Q', click: quitApp }
   );
 
@@ -1054,6 +1065,185 @@ function installUpdate() {
 }
 
 // ---------------------------------------------------------------------------
+// Barre de menus et "A propos"
+// ---------------------------------------------------------------------------
+
+/**
+ * Fenetre "A propos". Les versions y sont copiables d'un clic : c'est la
+ * premiere chose qu'on demande dans un rapport de bug, et personne ne sait les
+ * retrouver autrement.
+ */
+async function showAbout() {
+  const details = [
+    `Nexus ${app.getVersion()}`,
+    `Electron ${process.versions.electron}`,
+    `Chromium ${process.versions.chrome}`,
+    `Node ${process.versions.node}`,
+    `${process.platform} ${process.arch}`,
+  ].join('\n');
+
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type: 'info',
+    title: 'A propos de Nexus',
+    message: `Nexus ${app.getVersion()}`,
+    detail: `Tes comptes, une seule fenetre, des sessions etanches.\n\n${details}`,
+    buttons: ['Fermer', 'Copier les informations', 'Voir le depot'],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+    icon: nativeImage.createFromPath(ICON_PATH),
+  });
+
+  if (response === 1) clipboard.writeText(details);
+  if (response === 2) shell.openExternal(REPO_URL);
+}
+
+function checkForUpdatesManually() {
+  if (!app.isPackaged) {
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Mises a jour',
+      message: 'Indisponible en developpement',
+      detail: "Les mises a jour ne fonctionnent que depuis l'application installee.",
+      buttons: ['Fermer'],
+    });
+    return;
+  }
+
+  if (pendingUpdate) return installUpdate();
+
+  log('update', 'verification manuelle');
+  autoUpdater
+    .checkForUpdates()
+    .then((result) => {
+      if (result?.updateInfo?.version === app.getVersion()) {
+        dialog.showMessageBox(mainWindow, {
+          type: 'info',
+          title: 'Mises a jour',
+          message: 'Nexus est a jour',
+          detail: `Version ${app.getVersion()}.`,
+          buttons: ['Fermer'],
+        });
+      }
+    })
+    .catch((err) =>
+      dialog.showMessageBox(mainWindow, {
+        type: 'warning',
+        title: 'Mises a jour',
+        message: 'Verification impossible',
+        detail: err.message,
+        buttons: ['Fermer'],
+      })
+    );
+}
+
+/**
+ * Barre de menus classique, revelee par Alt (autoHideMenuBar).
+ *
+ * Piege a eviter : les raccourcis de l'app sont geres par before-input-event,
+ * qui fonctionne meme quand le focus est dans un service. Si le menu les
+ * enregistrait AUSSI, chaque frappe serait traitee deux fois — un Ctrl+Shift+I
+ * qui ouvre puis referme les DevTools, par exemple. D'ou `registerAccelerator:
+ * false` : le raccourci s'affiche dans le menu, mais n'est pas capte par lui.
+ */
+function createApplicationMenu() {
+  const shown = (accelerator) => ({ accelerator, registerAccelerator: false });
+  const active = () => views.get(activeId);
+
+  const menu = Menu.buildFromTemplate([
+    {
+      label: 'Fichier',
+      submenu: [
+        {
+          label: 'Nouveau service...',
+          ...shown('CommandOrControl+N'),
+          click: () => send('hub:new-service', {}),
+        },
+        { type: 'separator' },
+        { label: 'Masquer dans le tray', click: () => mainWindow?.hide() },
+        { label: 'Quitter', ...shown('CommandOrControl+Q'), click: quitApp },
+      ],
+    },
+    {
+      label: 'Edition',
+      submenu: [
+        { role: 'undo', label: 'Annuler' },
+        { role: 'redo', label: 'Retablir' },
+        { type: 'separator' },
+        { role: 'cut', label: 'Couper' },
+        { role: 'copy', label: 'Copier' },
+        { role: 'paste', label: 'Coller' },
+        { role: 'selectAll', label: 'Tout selectionner' },
+      ],
+    },
+    {
+      label: 'Affichage',
+      submenu: [
+        {
+          label: 'Recharger le service',
+          ...shown('CommandOrControl+R'),
+          click: () => active()?.view.webContents.reload(),
+        },
+        {
+          label: 'Recharger sans le cache',
+          ...shown('CommandOrControl+Shift+R'),
+          click: () => {
+            const entry = active();
+            if (!entry) return;
+            entry.view.webContents.session
+              .clearCache()
+              .then(() => entry.view.webContents.reloadIgnoringCache());
+          },
+        },
+        { type: 'separator' },
+        {
+          label: 'Mettre le service en veille',
+          click: () => hibernateService(activeId, 'demande manuelle'),
+          enabled: false, // le service affiche n'est jamais mis en veille
+        },
+        { type: 'separator' },
+        { role: 'togglefullscreen', label: 'Plein ecran' },
+        {
+          label: 'Outils de developpement du service',
+          ...shown('CommandOrControl+Shift+I'),
+          click: () => active()?.view.webContents.toggleDevTools(),
+        },
+        {
+          label: 'Outils de developpement de la sidebar',
+          ...shown('CommandOrControl+,'),
+          click: () => mainWindow?.webContents.toggleDevTools(),
+        },
+      ],
+    },
+    {
+      label: 'Services',
+      submenu: orderedServices().map((service, index) => ({
+        label: hibernated.has(service.id) ? `${service.name} (en veille)` : service.name,
+        ...(index < 9 ? shown(`CommandOrControl+${index + 1}`) : {}),
+        click: () => showService(service.id),
+      })),
+    },
+    {
+      label: 'Aide',
+      submenu: [
+        { label: 'Rechercher des mises a jour...', click: checkForUpdatesManually },
+        { type: 'separator' },
+        { label: 'Documentation', click: () => shell.openExternal(`${REPO_URL}#readme`) },
+        {
+          label: 'Signaler un probleme',
+          click: () => shell.openExternal(`${REPO_URL}/issues/new`),
+        },
+        { label: 'Code source', click: () => shell.openExternal(REPO_URL) },
+        { type: 'separator' },
+        { label: 'A propos de Nexus', click: showAbout },
+      ],
+    },
+  ]);
+
+  Menu.setApplicationMenu(menu);
+}
+
+// ---------------------------------------------------------------------------
 // Fenetre principale (son webContents = la sidebar)
 // ---------------------------------------------------------------------------
 
@@ -1108,7 +1298,10 @@ function createWindow() {
     },
   });
 
-  Menu.setApplicationMenu(null); // pas de menu natif : tout passe par les raccourcis
+  // Barre de menus masquee par defaut (autoHideMenuBar), revelee par Alt :
+  // l'app reste epuree, sans priver d'un point d'entree conventionnel vers
+  // "A propos", les mises a jour ou le report de bug.
+  createApplicationMenu();
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   mainWindow.webContents.on('before-input-event', handleShortcut);
 
@@ -1220,6 +1413,7 @@ function serviceForRenderer(service) {
 function broadcastServices() {
   send('hub:services', { services: orderedServices().map(serviceForRenderer) });
   refreshTrayMenu();
+  createApplicationMenu(); // le menu Services doit suivre la liste
 }
 
 function normalizeUrl(raw) {
@@ -1368,6 +1562,7 @@ ipcMain.handle('hub:bootstrap', () => ({
   services: orderedServices().map(serviceForRenderer),
   activeId,
   version: app.getVersion(),
+  catalog: CATALOG,
   update: pendingUpdate ? { state: 'ready', version: pendingUpdate } : null,
   // Base servant a composer l'icone du tray avec le compteur par-dessus.
   trayBase: nativeImage.createFromPath(ICON_PATH).resize({ width: 64, height: 64 }).toDataURL(),
