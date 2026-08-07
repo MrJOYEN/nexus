@@ -226,6 +226,29 @@ tu veux vraiment repartir de zero.
 
 ## Troubleshooting
 
+### Apres installation, je ne trouve que "Electron" dans le menu Demarrer
+
+Deux raccourcis coexistent, et un seul est le bon :
+
+```
+Nexus.lnk    -> %LOCALAPPDATA%\Programs\Nexus\Nexus.exe          <- l'app installee
+Electron.lnk -> <projet>\node_modules\electron\dist\electron.exe <- parasite de dev
+```
+
+Le second est cree automatiquement par `npm start` : pour afficher des toasts,
+Windows exige un raccourci du menu Demarrer portant l'AppUserModelID de l'app,
+et Chromium le fabrique en pointant sur le binaire Electron brut. Lance
+directement, celui-ci n'a aucune application a charger et affiche la page
+d'accueil d'Electron. C'est aussi lui qui fait apparaitre "Electron" comme
+emetteur des notifications en mode dev.
+
+Il peut etre supprime, mais il revient au prochain `npm start`.
+
+**Version installee et version de dev partagent le meme `%APPDATA%\Nexus`** :
+l'app installee retrouve les sessions ouvertes en dev, et inversement. Ne pas
+lancer les deux en meme temps — le verrou d'instance unique fera que la seconde
+se contentera de reveiller la fenetre de la premiere.
+
 ### L'ancien dossier `%APPDATA%\Messenger Hub`
 
 Le projet s'appelait "Messenger Hub" avant d'etre renomme en Nexus. Le nom du
