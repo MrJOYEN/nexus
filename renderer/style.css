@@ -1,0 +1,312 @@
+:root {
+  /* Doit rester synchro avec SIDEBAR_WIDTH dans main.js */
+  --sidebar-width: 68px;
+  --avatar-size: 48px;
+  --sidebar-bg: #1e1e2e;
+  --content-bg: #181825;
+  --divider: #45475a;
+  --accent: #89b4fa;
+  --text: #cdd6f4;
+  --text-dim: #6c7086;
+  --badge: #e5484d;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  color: var(--text);
+  background: var(--content-bg);
+  user-select: none;
+  cursor: default;
+}
+
+body {
+  display: flex;
+}
+
+/* --------------------------------------------------------------- sidebar -- */
+
+#sidebar {
+  width: var(--sidebar-width);
+  min-width: var(--sidebar-width);
+  height: 100%;
+  background: var(--sidebar-bg);
+  /* Separateur : les services ont souvent un fond sombre proche de --sidebar-bg
+     (Discord, WhatsApp en theme sombre), sans cette ligne les deux zones se
+     confondent. Comprise dans la largeur grace a box-sizing: border-box. */
+  border-right: 2px solid var(--divider);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+#sidebar::-webkit-scrollbar {
+  display: none;
+}
+
+.service {
+  position: relative;
+  width: 100%;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* Barre verticale d'accent a gauche de l'icone active */
+.service::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 0;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
+  transition: height 140ms ease;
+}
+
+.service:hover::before {
+  height: 18px;
+}
+
+.service.active::before {
+  height: 32px;
+}
+
+.avatar {
+  width: var(--avatar-size);
+  height: var(--avatar-size);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  color: #fff;
+  background: var(--service-color, #45475a);
+  opacity: 0.8;
+  transition: opacity 140ms ease, transform 140ms ease;
+  overflow: hidden;
+}
+
+/* Avec une icone : aucun fond, aucun cadre, aucune marge. L'image occupe tout
+   l'avatar — c'est l'icone du service qui donne sa forme, pas un conteneur.
+   Le rayon de 14px se contente d'adoucir les icones carrees (Discord, Google) ;
+   les icones deja rondes (WhatsApp) ne le voient pas, leurs angles etant
+   transparents. */
+.service.has-icon .avatar {
+  background: none;
+  border-radius: 14px;
+}
+
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.service.has-icon .initials {
+  display: none;
+}
+
+.service:hover .avatar,
+.service.active .avatar {
+  opacity: 1;
+}
+
+.service:active .avatar {
+  transform: scale(0.92);
+}
+
+/* Glisser-deposer : l'icone tiree s'efface, sa place suit le curseur */
+.service.dragging {
+  opacity: 0.35;
+}
+
+.service.dragging::before,
+.service.dragging::after {
+  opacity: 0;
+}
+
+/* Etat de chargement : pastille pulsante */
+.service.loading .avatar {
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.service.error .avatar {
+  box-shadow: 0 0 0 2px var(--badge);
+}
+
+/* Badge de notifications non lues */
+.badge {
+  position: absolute;
+  top: 1px;
+  right: 4px;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 5px;
+  border-radius: 10px;
+  background: var(--badge);
+  border: 2px solid var(--sidebar-bg);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+  display: none;
+}
+
+.service.has-badge .badge {
+  display: block;
+}
+
+/* Non-lus sans compteur (WhatsApp affiche parfois juste un point) */
+.badge.dot {
+  min-width: 12px;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  top: 5px;
+  right: 8px;
+}
+
+/* Pastille d'initiales : uniquement sur les icones automatiques (favicon), la
+   ou deux services peuvent etre indiscernables — les 3 WhatsApp. Des qu'une
+   icone est choisie a la main, elle disparait. */
+.chip {
+  position: absolute;
+  bottom: 1px;
+  left: 8px;
+  height: 14px;
+  padding: 0 4px;
+  border-radius: 7px;
+  background: var(--service-color, #45475a);
+  color: #fff;
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 14px;
+  letter-spacing: 0.2px;
+  display: none;
+}
+
+.service.has-icon.auto-icon .chip {
+  display: block;
+}
+
+/* Tooltip maison (pas de title= natif : trop lent a apparaitre) */
+.service::after {
+  content: attr(data-name);
+  position: absolute;
+  left: calc(100% + 6px);
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: #11111b;
+  color: var(--text);
+  font-size: 12px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+  z-index: 10;
+}
+
+.service:hover::after {
+  opacity: 1;
+}
+
+/* --------------------------------------------------------------- content -- */
+
+#content {
+  flex: 1;
+  height: 100%;
+  position: relative;
+  background: var(--content-bg);
+}
+
+#overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#overlay.hidden,
+#overlay-retry.hidden {
+  display: none;
+}
+
+.overlay-card {
+  text-align: center;
+  max-width: 460px;
+  padding: 24px;
+}
+
+.overlay-avatar {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  color: #fff;
+  background: var(--service-color, #45475a);
+}
+
+.overlay-card h1 {
+  font-size: 17px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.overlay-card p {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+#overlay-retry {
+  margin-top: 20px;
+  padding: 9px 22px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #11111b;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#overlay-retry:hover {
+  filter: brightness(1.1);
+}

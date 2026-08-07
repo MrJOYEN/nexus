@@ -1,0 +1,63 @@
+{
+  "name": "nexus",
+  "productName": "Nexus",
+  "version": "1.0.0",
+  "description": "Hub desktop unifiant WhatsApp / Discord / Google Calendar dans une seule fenetre, avec sessions isolees.",
+  "author": "Mehdi",
+  "license": "MIT",
+  "private": true,
+  "main": "main.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "pack": "electron-builder --dir",
+    "build": "electron-builder --win"
+  },
+  "dependencies": {
+    "electron-store": "8.2.0"
+  },
+  "devDependencies": {
+    "electron": "^43.3.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.mehdi.nexus",
+    "productName": "Nexus",
+    "directories": {
+      "output": "dist",
+      "buildResources": "assets"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "services.js",
+      "renderer/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Nexus"
+    },
+    "artifactName": "${productName}-Setup-${version}.${ext}",
+    "publish": null
+  }
+}

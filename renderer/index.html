@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:;"
+    />
+    <title>Nexus</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <!-- Sidebar : 64px, toujours visible. Le reste de la fenetre est recouvert
+         par la WebContentsView du service actif (gere dans main.js). -->
+    <nav id="sidebar" aria-label="Services"></nav>
+
+    <!-- Zone principale : visible uniquement quand la vue du service est masquee
+         (chargement en erreur / timeout). -->
+    <main id="content">
+      <div id="overlay" class="hidden">
+        <div class="overlay-card">
+          <div class="overlay-avatar" id="overlay-avatar">--</div>
+          <h1 id="overlay-title">Chargement...</h1>
+          <p id="overlay-message"></p>
+          <button id="overlay-retry" class="hidden" type="button">Reessayer</button>
+        </div>
+      </div>
+    </main>
+
+    <script src="sidebar.js"></script>
+  </body>
+</html>
