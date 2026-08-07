@@ -45,8 +45,19 @@ taches est une _overlay icon_, dessinee au canvas dans le renderer
 Pour changer sa couleur ou sa forme, tout est dans cette fonction.
 
 Cas particulier : quand un service signale des non-lus **sans compteur**
-(WhatsApp affiche parfois juste un point), le badge devient une pastille sans
+(Discord affiche parfois `• Discord | Amis`), le badge devient une pastille sans
 chiffre.
+
+**Ce que le nombre veut dire depend du service**, et l'app ne fait que relayer.
+WhatsApp compte les **conversations** non lues, pas les messages : dix messages
+du meme contact affichent `(1)`, un message de deux contacts differents affiche
+`(2)`. Verifie dans les logs — le titre ne change tout simplement pas quand un
+message arrive dans une conversation deja non lue.
+
+C'est la meme valeur que WhatsApp affiche dans un onglet de navigateur. Obtenir
+un compte de messages demanderait de lire la liste des conversations dans le DOM
+de WhatsApp : classes obfusquees et libelles traduits, donc casse a chaque
+refonte. Le titre, lui, est stable depuis des annees.
 
 Quand la fenetre est masquee dans le tray, elle n'a plus de bouton dans la barre
 des taches — donc plus de pastille. L'icone du tray prend alors le relais : elle
