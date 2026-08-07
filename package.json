@@ -36,6 +36,7 @@
       "services.js",
       "renderer/**/*",
       "assets/**/*",
+      "!assets/*.bmp",
       "package.json"
     ],
     "win": {

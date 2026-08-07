@@ -172,6 +172,30 @@ Editer `services.js` et ajouter une entree :
 Redemarrer l'app. Rien d'autre a toucher : la sidebar, les raccourcis et le menu
 tray se construisent depuis ce tableau.
 
+## Identite visuelle
+
+Les sources de la marque vivent dans `handoff/` (master vectoriel, rendus PNG,
+habillage de l'installeur, declinaisons du logo). Les fichiers consommes par le
+build sont derives dans `assets/` :
+
+```bash
+# assets/icon.ico — l'ordre compte : les frames 16, 32 et 48 sont des dessins
+# retravaillés, pas des reductions. Sans elles Windows reduit la 256 et le
+# travail sur les petites tailles est perdu.
+magick handoff/icon/nexus-16.png handoff/icon/nexus-32.png handoff/icon/nexus-48.png \
+       handoff/icon/nexus-64.png handoff/icon/nexus-128.png handoff/icon/nexus-256.png \
+       assets/icon.ico
+
+# habillage NSIS — BMP3 force le 24 bits sans canal alpha, seul dialecte lu par NSIS
+for f in installerSidebar uninstallerSidebar installerHeader; do
+  magick handoff/installer/$f.png BMP3:assets/$f.bmp
+done
+```
+
+electron-builder detecte ces trois BMP par leur nom dans `buildResources`
+(`assets/`), sans configuration. Ils sont exclus du paquet (`!assets/*.bmp`) :
+ils servent au moment du build, pas a l'execution.
+
 ## Icones de la sidebar
 
 **Le plus simple : clic droit sur l'icone > _Changer l'icone..._**, choisir une
