@@ -75,9 +75,18 @@ function orderedServices() {
   return ordered;
 }
 
-// Nom affiche par le Action Center Windows pour les notifications natives.
-// A definir AVANT app.whenReady() sinon Windows utilise "electron.app.Electron".
-app.setAppUserModelId('com.mehdi.nexus');
+// Identite Windows de l'app : elle determine le nom affiche par le Action Center
+// pour les notifications, mais aussi l'icone et le libelle dans la barre des
+// taches — Windows resout cet identifiant vers un raccourci du menu Demarrer et
+// lui emprunte son icone, celle de l'exe etant ignoree.
+//
+// D'ou l'identifiant distinct hors packaging : en dev, Chromium fabrique tout
+// seul un raccourci pointant sur electron.exe pour autoriser les toasts. S'il
+// portait le meme identifiant que l'app installee, il lui volerait son identite
+// et la barre des taches afficherait le logo Electron.
+//
+// A definir AVANT app.whenReady().
+app.setAppUserModelId(app.isPackaged ? 'com.mehdi.nexus' : 'com.mehdi.nexus.dev');
 
 // Une seule instance : un 2e lancement reveille la fenetre existante.
 if (!app.requestSingleInstanceLock()) {

@@ -239,10 +239,22 @@ Le second est cree automatiquement par `npm start` : pour afficher des toasts,
 Windows exige un raccourci du menu Demarrer portant l'AppUserModelID de l'app,
 et Chromium le fabrique en pointant sur le binaire Electron brut. Lance
 directement, celui-ci n'a aucune application a charger et affiche la page
-d'accueil d'Electron. C'est aussi lui qui fait apparaitre "Electron" comme
-emetteur des notifications en mode dev.
+d'accueil d'Electron.
 
-Il peut etre supprime, mais il revient au prochain `npm start`.
+**Il ne se contente pas d'encombrer le menu Demarrer.** Windows n'utilise pas
+l'icone de l'exe pour la barre des taches : il resout l'AppUserModelID vers un
+raccourci et lui emprunte son icone et son libelle. Deux raccourcis revendiquant
+`com.mehdi.nexus`, c'est le parasite qui peut gagner — l'app installee se
+retrouve alors avec le logo Electron et le nom "Electron" en barre des taches.
+
+D'ou l'identifiant distinct hors packaging (`main.js`) :
+
+```js
+app.setAppUserModelId(app.isPackaged ? 'com.mehdi.nexus' : 'com.mehdi.nexus.dev');
+```
+
+Le raccourci de dev ne peut plus revendiquer l'identite de l'app installee. Si le
+mal est deja fait, supprimer `Electron.lnk` du menu Demarrer et relancer l'app.
 
 **Version installee et version de dev partagent le meme `%APPDATA%\Nexus`** :
 l'app installee retrouve les sessions ouvertes en dev, et inversement. Ne pas
