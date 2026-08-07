@@ -306,6 +306,15 @@ data:`, aucune requete reseau n'est faite depuis la sidebar.
 
 ## Troubleshooting
 
+### Les infobulles de la sidebar
+
+Ce sont des infobulles **natives** (attribut `title`), pas du HTML. Une infobulle
+dessinee par la sidebar resterait invisible : la `WebContentsView` du service est
+une couche native posee au-dessus de la page, donc rien de ce que peint le
+renderer ne peut deborder par-dessus. Elle serait tronquee aux 68px de la
+sidebar. Meme limite pour tout ce qui voudrait s'afficher par-dessus un service —
+d'ou la vue escamotee pendant l'affichage du formulaire.
+
 ### Apres installation, je ne trouve que "Electron" dans le menu Demarrer
 
 Deux raccourcis coexistent, et un seul est le bon :
