@@ -136,6 +136,38 @@
       </div>
     </main>
 
+    <!-- Onboarding du premier lancement : par-dessus tout, sidebar comprise.
+         Etape 1, la langue ; etape 2, les services depuis le catalogue. -->
+    <div id="onboarding" class="hidden">
+      <section class="ob-step" id="ob-welcome">
+        <img class="ob-logo" src="../assets/icon.ico" alt="" />
+        <h1 data-i18n="ob.welcome">Welcome to Nexus</h1>
+        <p class="ob-tagline" data-i18n="ob.tagline">
+          All your web apps in one window, each account in its own isolated session.
+        </p>
+        <div class="ob-langs">
+          <button type="button" data-lang="en">English</button>
+          <button type="button" data-lang="fr">Français</button>
+        </div>
+        <small data-i18n="ob.langHint">You can change the language later from the File menu.</small>
+      </section>
+
+      <section class="ob-step hidden" id="ob-pick">
+        <header class="ob-pick-head">
+          <h1 data-i18n="ob.pickTitle">Pick your services</h1>
+          <p data-i18n="ob.pickHint">
+            Choose what you use every day. You can add several accounts of the same service
+            later, and they will never sign each other out.
+          </p>
+        </header>
+        <div id="ob-grid"></div>
+        <footer class="ob-footer">
+          <button type="button" id="ob-skip" data-i18n="ob.skip">Start empty</button>
+          <button type="button" id="ob-start" class="primary" disabled></button>
+        </footer>
+      </section>
+    </div>
+
     <script src="sidebar.js"></script>
   </body>
 </html>

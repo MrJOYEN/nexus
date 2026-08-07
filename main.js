@@ -16,7 +16,7 @@ const {
 } = require('electron');
 const Store = require('electron-store');
 const { autoUpdater } = require('electron-updater');
-const { DEFAULT_SERVICES, SERVICE_DEFAULTS, CHROME_UA } = require('./services');
+const { SERVICE_DEFAULTS, CHROME_UA } = require('./services');
 const { CATALOG } = require('./catalog');
 const { SVG_SCORE, sniffMime, iconWidth, decodeDataUrl } = require('./images');
 const catalogIcons = require('./catalog-icons');
@@ -54,10 +54,12 @@ const store = new Store({
   defaults: {
     window: { width: 1400, height: 900, x: undefined, y: undefined, maximized: false },
     lastActiveId: null,
-    // La liste des services vit ici, pas dans services.js (qui n'est qu'une
-    // semence). C'est ce qui permet de les creer et de les editer depuis l'app.
+    // La liste des services vit ici : construite a l'onboarding, editee depuis
+    // l'app. Aucun fichier de code ne la definit.
     services: [],
-    servicesSeeded: false,
+    // Onboarding termine ? Tant que non (et que la liste est vide), le premier
+    // lancement affiche l'accueil plutot qu'une fenetre vide.
+    onboarded: false,
     // id -> data URI : icones choisies par l'utilisateur (clic droit sur l'icone).
     icons: {},
     // Ordre d'affichage choisi par l'utilisateur (drag & drop dans la sidebar).
@@ -79,15 +81,17 @@ function withDefaults(service) {
 }
 
 /**
- * Premier lancement : on copie services.js dans le store, qui devient la seule
- * source de verite. Le drapeau evite qu'un service supprime par l'utilisateur
- * ne reapparaisse au redemarrage suivant.
+ * L'onboarding ne se montre qu'une fois : premier lancement, aucune config.
+ * Une installation qui a deja des services (mise a jour depuis une version
+ * anterieure a l'onboarding) est consideree comme deja accueillie.
  */
-function seedServices() {
-  if (store.get('servicesSeeded')) return;
-  store.set('services', DEFAULT_SERVICES);
-  store.set('servicesSeeded', true);
-  log('services', `semence initiale : ${DEFAULT_SERVICES.length} services depuis services.js`);
+function needsOnboarding() {
+  if (store.get('onboarded')) return false;
+  if (allServices().length) {
+    store.set('onboarded', true);
+    return false;
+  }
+  return true;
 }
 
 function allServices() {
@@ -1095,6 +1099,27 @@ function createApplicationMenu() {
           click: () => send('hub:new-service', {}),
         },
         { type: 'separator' },
+        // La langue est un reglage, pas une rubrique d'aide. Elle se choisit a
+        // l'onboarding puis se change ici.
+        {
+          label: t('menu.language'),
+          submenu: [
+            {
+              label: t('menu.language.system'),
+              type: 'radio',
+              checked: preference === 'system',
+              click: () => setLanguage('system'),
+            },
+            { type: 'separator' },
+            ...i18n.AVAILABLE.map((code) => ({
+              label: LANGUAGE_NAMES[code] || code,
+              type: 'radio',
+              checked: preference === code,
+              click: () => setLanguage(code),
+            })),
+          ],
+        },
+        { type: 'separator' },
         { label: t('menu.file.hide'), click: () => mainWindow?.hide() },
         { label: t('menu.file.quit'), ...shown('CommandOrControl+Q'), click: quitApp },
       ],
@@ -1159,25 +1184,6 @@ function createApplicationMenu() {
       submenu: [
         { label: t('menu.help.updates'), click: checkForUpdatesManually },
         { type: 'separator' },
-        {
-          label: t('menu.language'),
-          submenu: [
-            {
-              label: t('menu.language.system'),
-              type: 'radio',
-              checked: preference === 'system',
-              click: () => setLanguage('system'),
-            },
-            { type: 'separator' },
-            ...i18n.AVAILABLE.map((code) => ({
-              label: LANGUAGE_NAMES[code] || code,
-              type: 'radio',
-              checked: preference === code,
-              click: () => setLanguage(code),
-            })),
-          ],
-        },
-        { type: 'separator' },
         { label: t('menu.help.docs'), click: () => shell.openExternal(`${REPO_URL}#readme`) },
         { label: t('menu.help.issue'), click: () => shell.openExternal(`${REPO_URL}/issues/new`) },
         { label: t('menu.help.source'), click: () => shell.openExternal(REPO_URL) },
@@ -1195,9 +1201,9 @@ function createApplicationMenu() {
 const LANGUAGE_NAMES = { en: 'English', fr: 'Français' };
 
 /**
- * Change la langue a chaud. Menus et tray sont reconstruits ici ; la sidebar est
- * rechargee, ce qui la fait repasser par bootstrap et recuperer le nouveau
- * dictionnaire. Les services, eux, ne bougent pas.
+ * Change la langue a chaud, sans rien recharger. Menus et tray sont reconstruits
+ * ici ; la barre laterale recoit le nouveau dictionnaire et retraduit sur place.
+ * Les services, eux, ne bougent pas.
  */
 function setLanguage(preference) {
   store.set('language', preference);
@@ -1206,7 +1212,8 @@ function setLanguage(preference) {
 
   createApplicationMenu();
   refreshTrayMenu();
-  mainWindow?.webContents.reload();
+  refreshTrayTooltip();
+  send('hub:language', { strings: i18n.dict(), language: applied, preference });
 }
 
 // ---------------------------------------------------------------------------
@@ -1526,10 +1533,12 @@ ipcMain.handle('hub:bootstrap', () => ({
   services: orderedServices().map(serviceForRenderer),
   activeId,
   version: app.getVersion(),
+  onboarding: needsOnboarding(),
   // Le renderer est sandboxe : il ne lit pas les fichiers de langue, il recoit
   // le dictionnaire deja resolu.
   strings: i18n.dict(),
   language: i18n.current(),
+  languagePreference: store.get('language'),
   // Le domaine sert de cle pour les vignettes, chargees a part.
   catalog: CATALOG.map((entry) => ({ ...entry, domain: catalogIcons.domainOf(entry.url) })),
   catalogIcons: catalogIcons.known(),
@@ -1540,6 +1549,47 @@ ipcMain.handle('hub:bootstrap', () => ({
 
 ipcMain.handle('hub:service-save', (_e, draft) => saveService(draft || {}));
 ipcMain.handle('hub:service-delete', (_e, id) => deleteService(id));
+
+/**
+ * Fin d'onboarding : cree les services choisis dans l'ordre du clic, puis
+ * demarre comme un lancement normal (premier service affiche, les autres
+ * precharges en quinconce).
+ */
+ipcMain.handle('hub:onboard-complete', (_e, drafts) => {
+  const picks = Array.isArray(drafts) ? drafts : [];
+
+  for (const draft of picks) {
+    const result = saveService(draft);
+    if (result.error) log('onboarding', `"${draft?.name}" ignore : ${result.error}`);
+  }
+
+  store.set('onboarded', true);
+
+  const services = orderedServices();
+  log('onboarding', `termine : ${services.length} service(s)`);
+
+  if (services.length) {
+    showService(services[0].id);
+
+    let delay = PRELOAD_STAGGER_MS;
+    for (const service of services.slice(1)) {
+      if (service.preload === false) continue;
+      setTimeout(() => {
+        if (!mainWindow || mainWindow.isDestroyed() || views.has(service.id)) return;
+        createServiceView(service);
+      }, delay);
+      delay += PRELOAD_STAGGER_MS;
+    }
+  }
+
+  return { ok: true, count: services.length };
+});
+
+/** Changement de langue, depuis l'onboarding ou le menu Fichier. */
+ipcMain.handle('hub:set-language', (_e, preference) => {
+  setLanguage(preference);
+  return { strings: i18n.dict(), language: i18n.current(), preference: store.get('language') };
+});
 
 /** Enregistre un nouvel ordre complet (drag & drop cote sidebar). */
 ipcMain.on('hub:reorder', (_e, ids) => {
@@ -1675,8 +1725,6 @@ app.whenReady().then(() => {
   const preference = store.get('language');
   log('i18n', `langue : ${i18n.init(preference === 'system' ? null : preference)}`);
 
-  seedServices();
-
   catalogIcons.init({
     log,
     onIcon: (domain, dataUrl) => send('hub:catalog-icon', { domain, dataUrl }),
@@ -1689,10 +1737,12 @@ app.whenReady().then(() => {
   createTray();
   setupUpdater();
 
-  // Prechargement des vignettes du catalogue, apres le demarrage des services :
-  // la grille doit etre chaude AVANT que le formulaire ne s'ouvre. Un cache
-  // frais ne declenche aucune requete.
-  setTimeout(() => catalogIcons.refresh(CATALOG), 8000);
+  // Prechargement des vignettes du catalogue : la grille doit etre chaude avant
+  // que le formulaire ne s'ouvre. Pendant l'onboarding elle est visible tout de
+  // suite, donc pas d'attente ; sinon on laisse les services demarrer d'abord.
+  // Un cache frais ne declenche aucune requete.
+  const delay = needsOnboarding() ? 0 : 8000;
+  setTimeout(() => catalogIcons.refresh(CATALOG), delay);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

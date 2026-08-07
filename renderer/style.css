@@ -573,6 +573,180 @@ body {
   display: none;
 }
 
+/* -------------------------------------------------------------- onboarding -- */
+
+#onboarding {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: var(--content-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+}
+
+.ob-step {
+  width: 100%;
+  max-width: 820px;
+  max-height: 100%;
+  padding: 48px 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  text-align: center;
+  overflow-y: auto;
+}
+
+.ob-logo {
+  width: 88px;
+  height: 88px;
+  margin-bottom: 6px;
+}
+
+.ob-step h1 {
+  font-size: 28px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.ob-tagline {
+  max-width: 46ch;
+  font-size: 15px;
+  color: var(--text-dim);
+  line-height: 1.55;
+}
+
+.ob-langs {
+  display: flex;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.ob-langs button {
+  min-width: 150px;
+  padding: 13px 26px;
+  border: 1px solid var(--divider);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+}
+
+.ob-langs button:hover {
+  border-color: var(--accent);
+  background: rgba(137, 180, 250, 0.08);
+}
+
+.ob-langs button:active {
+  transform: scale(0.97);
+}
+
+.ob-step small {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.ob-pick-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ob-pick-head p {
+  max-width: 58ch;
+  font-size: 13.5px;
+  color: var(--text-dim);
+  line-height: 1.55;
+}
+
+#ob-grid {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  padding: 4px 2px;
+}
+
+/* Tuile selectionnee : bordure accent + coche en haut a droite */
+.tile.selected {
+  border-color: var(--accent);
+  background: rgba(137, 180, 250, 0.1);
+}
+
+.tile {
+  position: relative;
+}
+
+.tile .tick {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #11111b;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  display: none;
+}
+
+.tile.selected .tick {
+  display: block;
+}
+
+.ob-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 6px;
+}
+
+.ob-footer button {
+  padding: 11px 24px;
+  border: 1px solid var(--divider);
+  border-radius: 9px;
+  background: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ob-footer button:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.ob-footer .primary {
+  border-color: transparent;
+  background: var(--accent);
+  color: #11111b;
+}
+
+.ob-footer .primary:hover {
+  filter: brightness(1.1);
+  background: var(--accent);
+}
+
+.ob-footer .primary:disabled {
+  opacity: 0.45;
+  cursor: default;
+  filter: none;
+}
+
 /* ----------------------------------------------------- formulaire service -- */
 
 #service-form {

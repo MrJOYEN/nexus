@@ -537,8 +537,12 @@ function renderCatalog(query) {
     catalogGrid.append(tile);
   }
 
+  // La recherche matche le nom et la categorie traduite : "prod" trouve la
+  // rubrique Productivite en francais comme Productivity en anglais.
   const matches = needle
-    ? catalog.filter((entry) => normalize(`${entry.name} ${entry.category}`).includes(needle))
+    ? catalog.filter((entry) =>
+        normalize(`${entry.name} ${t(`cat.${entry.category}`)}`).includes(needle)
+      )
     : catalog;
 
   // Sans recherche, la galerie garde ses rubriques : c'est ce qui la rend
@@ -553,7 +557,7 @@ function renderCatalog(query) {
         current = entry.category;
         const label = document.createElement('p');
         label.className = 'catalog-category';
-        label.textContent = current;
+        label.textContent = t(`cat.${current}`);
         catalogGrid.append(label);
 
         group = document.createElement('div');
@@ -754,6 +758,130 @@ function showUpdate(update) {
 }
 
 // ---------------------------------------------------------------------------
+// Onboarding (premier lancement)
+//
+// Etape 1 : la langue, appliquee immediatement et sans rechargement. Etape 2 :
+// les services, choisis dans le catalogue avec les vrais logos, qui arrivent en
+// continu pendant que l'utilisateur regarde la grille (le prechargement demarre
+// sans delai quand l'onboarding est actif).
+// ---------------------------------------------------------------------------
+
+const onboarding = document.getElementById('onboarding');
+const obWelcome = document.getElementById('ob-welcome');
+const obPick = document.getElementById('ob-pick');
+const obGrid = document.getElementById('ob-grid');
+const obSkip = document.getElementById('ob-skip');
+const obStart = document.getElementById('ob-start');
+
+/** Selection en cours, dans l'ordre du clic : cet ordre devient la sidebar. */
+const obPicked = [];
+
+function obRefreshStart() {
+  obStart.disabled = !obPicked.length;
+  obStart.textContent = obPicked.length
+    ? t('ob.start', { count: obPicked.length })
+    : t('ob.startNone');
+}
+
+function obRenderGrid() {
+  obGrid.innerHTML = '';
+  let current = null;
+  let group = null;
+
+  for (const entry of catalog) {
+    if (entry.category !== current) {
+      current = entry.category;
+      const label = document.createElement('p');
+      label.className = 'catalog-category';
+      label.textContent = t(`cat.${current}`);
+      obGrid.append(label);
+
+      group = document.createElement('div');
+      group.className = 'tiles';
+      obGrid.append(group);
+    }
+
+    const tile = document.createElement('button');
+    tile.className = 'tile';
+    tile.type = 'button';
+
+    const tick = document.createElement('span');
+    tick.className = 'tick';
+    tick.textContent = '✓';
+
+    const name = document.createElement('span');
+    name.className = 'tile-name';
+    name.textContent = entry.name;
+
+    tile.append(buildLogo(entry, 'md'), name, tick);
+
+    tile.addEventListener('click', () => {
+      const index = obPicked.indexOf(entry);
+      if (index >= 0) obPicked.splice(index, 1);
+      else obPicked.push(entry);
+      tile.classList.toggle('selected', index < 0);
+      obRefreshStart();
+    });
+
+    group.append(tile);
+  }
+}
+
+async function obSetLanguage(code) {
+  const result = await window.hub.setLanguage(code);
+  strings = result.strings || strings;
+  document.documentElement.lang = result.language || code;
+  applyTranslations();
+  obRenderGrid(); // les libelles de categories changent avec la langue
+  obRefreshStart();
+
+  obWelcome.classList.add('hidden');
+  obPick.classList.remove('hidden');
+}
+
+async function obFinish(drafts) {
+  const result = await window.hub.completeOnboarding(drafts);
+  onboarding.classList.add('hidden');
+  console.log(`[onboarding] termine : ${result?.count ?? 0} service(s)`);
+
+  // Personne ne demarre sur une fenetre vide : sans selection, on enchaine sur
+  // le formulaire d'ajout.
+  if (!result?.count) openForm(null);
+}
+
+for (const button of document.querySelectorAll('.ob-langs button')) {
+  button.addEventListener('click', () => obSetLanguage(button.dataset.lang));
+}
+
+obSkip.addEventListener('click', () => obFinish([]));
+
+obStart.addEventListener('click', () => {
+  obStart.disabled = true;
+  obFinish(
+    obPicked.map((entry) => ({
+      name: entry.name,
+      url: entry.url,
+      initials: entry.initials,
+      color: entry.color,
+      spoofUserAgent: Boolean(entry.spoof),
+      preload: true,
+    }))
+  );
+});
+
+function startOnboarding() {
+  // Si l'icone ne charge pas (CSP, chemin), on la retire plutot que d'afficher
+  // une image cassee en plein ecran d'accueil.
+  const logo = document.querySelector('.ob-logo');
+  logo?.addEventListener('error', () => logo.remove());
+
+  obRenderGrid();
+  obRefreshStart();
+  onboarding.classList.remove('hidden');
+  console.log('[onboarding] premier lancement');
+}
+
+// ---------------------------------------------------------------------------
 // Bootstrap
 // ---------------------------------------------------------------------------
 
@@ -774,6 +902,7 @@ function showUpdate(update) {
   renderSidebar(boot.services);
   if (boot.activeId) setActive(boot.activeId);
   showUpdate(boot.update);
+  if (boot.onboarding) startOnboarding();
 
   console.log(
     `[sidebar] Nexus ${boot.version} — catalogue : ${catalog.length} services, ` +
@@ -793,4 +922,13 @@ function showUpdate(update) {
   });
   window.hub.onNewService(() => openForm(null));
   window.hub.onUpdate(showUpdate);
+  window.hub.onLanguage(({ strings: dict, language }) => {
+    // Changement depuis le menu Fichier : on retraduit sur place, sans recharger.
+    strings = dict || strings;
+    document.documentElement.lang = language || 'en';
+    applyTranslations();
+    refreshShortcutLabels();
+    if (!modal.classList.contains('hidden')) renderCatalog(searchInput.value);
+    if (activeId) refreshOverlay();
+  });
 })();

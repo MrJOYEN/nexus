@@ -26,6 +26,15 @@ contextBridge.exposeInMainWorld('hub', {
   /** Cree ou met a jour un service -> { ok } ou { error }. */
   saveService: (draft) => ipcRenderer.invoke('hub:service-save', draft),
 
+  /** Fin d'onboarding : cree les services choisis et demarre. */
+  completeOnboarding: (drafts) => ipcRenderer.invoke('hub:onboard-complete', drafts),
+
+  /** Change la langue -> { strings, language, preference }. */
+  setLanguage: (preference) => ipcRenderer.invoke('hub:set-language', preference),
+
+  /** { strings, language } - la langue a change depuis le menu. */
+  onLanguage: (callback) => on('hub:language', callback),
+
   /** Supprime un service, apres confirmation native. */
   deleteService: (id) => ipcRenderer.invoke('hub:service-delete', id),
 
