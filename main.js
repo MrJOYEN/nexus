@@ -20,6 +20,8 @@ const { DEFAULT_SERVICES, SERVICE_DEFAULTS, CHROME_UA } = require('./services');
 const { CATALOG } = require('./catalog');
 const { SVG_SCORE, sniffMime, iconWidth, decodeDataUrl } = require('./images');
 const catalogIcons = require('./catalog-icons');
+const i18n = require('./i18n');
+const { t } = i18n;
 
 const REPO_URL = 'https://github.com/MrJOYEN/nexus';
 
@@ -62,6 +64,8 @@ const store = new Store({
     order: [],
     // id -> true : services dont les notifications sont coupees.
     muted: {},
+    // 'system', 'en' ou 'fr'.
+    language: 'system',
   },
 });
 
@@ -287,11 +291,11 @@ async function chooseIcon(id) {
   if (!service) return;
 
   const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
-    title: `Icone de ${service.name}`,
-    buttonLabel: 'Utiliser cette image',
+    title: t('icon.title', { name: service.name }),
+    buttonLabel: t('icon.button'),
     properties: ['openFile'],
     // nativeImage ne decode que PNG / JPEG (+ ICO sous Windows).
-    filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'ico'] }],
+    filters: [{ name: t('icon.filter'), extensions: ['png', 'jpg', 'jpeg', 'ico'] }],
   });
 
   if (canceled || !filePaths[0]) return;
@@ -299,10 +303,7 @@ async function chooseIcon(id) {
   const image = nativeImage.createFromPath(filePaths[0]);
   if (image.isEmpty()) {
     log('icon', `${id} : image illisible -> ${filePaths[0]}`);
-    dialog.showErrorBox(
-      'Image illisible',
-      'Ce fichier ne peut pas etre decode. Formats acceptes : PNG, JPEG, ICO.'
-    );
+    dialog.showErrorBox(t('icon.errorTitle'), t('icon.errorDetail'));
     return;
   }
 
@@ -908,7 +909,9 @@ function refreshTrayMenu() {
 
   const template = [
     ...orderedServices().map((service, index) => ({
-      label: hibernated.has(service.id) ? `${service.name} (en veille)` : service.name,
+      label: hibernated.has(service.id)
+        ? t('tray.sleeping', { name: service.name })
+        : service.name,
       accelerator: index < 9 ? `CommandOrControl+${index + 1}` : undefined,
       click: () => {
         showWindow();
@@ -917,7 +920,7 @@ function refreshTrayMenu() {
     })),
     { type: 'separator' },
     {
-      label: 'Afficher / masquer',
+      label: t('tray.toggle'),
       click: () => (mainWindow?.isVisible() ? mainWindow.hide() : showWindow()),
     },
   ];
@@ -925,14 +928,14 @@ function refreshTrayMenu() {
   if (pendingUpdate) {
     template.push(
       { type: 'separator' },
-      { label: `Installer la version ${pendingUpdate}`, click: installUpdate }
+      { label: t('tray.install', { version: pendingUpdate }), click: installUpdate }
     );
   }
 
   template.push(
     { type: 'separator' },
-    { label: 'A propos de Nexus', click: showAbout },
-    { label: 'Quitter', accelerator: 'CommandOrControl+Q', click: quitApp }
+    { label: t('menu.help.about'), click: showAbout },
+    { label: t('menu.file.quit'), accelerator: 'CommandOrControl+Q', click: quitApp }
   );
 
   tray.setContextMenu(Menu.buildFromTemplate(template));
@@ -941,7 +944,7 @@ function refreshTrayMenu() {
 function refreshTrayTooltip() {
   if (!tray) return;
   const total = [...views.values()].reduce((sum, entry) => sum + Math.max(0, entry.badge), 0);
-  tray.setToolTip(total > 0 ? `Nexus - ${total} non lus` : 'Nexus');
+  tray.setToolTip(total > 0 ? t('tray.unread', { count: total }) : 'Nexus');
 }
 
 // ---------------------------------------------------------------------------
@@ -1014,10 +1017,10 @@ async function showAbout() {
 
   const { response } = await dialog.showMessageBox(mainWindow, {
     type: 'info',
-    title: 'A propos de Nexus',
+    title: t('menu.help.about'),
     message: `Nexus ${app.getVersion()}`,
-    detail: `Tes comptes, une seule fenetre, des sessions etanches.\n\n${details}`,
-    buttons: ['Fermer', 'Copier les informations', 'Voir le depot'],
+    detail: `${t('about.tagline')}\n\n${details}`,
+    buttons: [t('about.close'), t('about.copy'), t('about.repo')],
     defaultId: 0,
     cancelId: 0,
     noLink: true,
@@ -1032,10 +1035,10 @@ function checkForUpdatesManually() {
   if (!app.isPackaged) {
     dialog.showMessageBox(mainWindow, {
       type: 'info',
-      title: 'Mises a jour',
-      message: 'Indisponible en developpement',
-      detail: "Les mises a jour ne fonctionnent que depuis l'application installee.",
-      buttons: ['Fermer'],
+      title: t('update.title'),
+      message: t('update.devMessage'),
+      detail: t('update.devDetail'),
+      buttons: [t('about.close')],
     });
     return;
   }
@@ -1049,20 +1052,20 @@ function checkForUpdatesManually() {
       if (result?.updateInfo?.version === app.getVersion()) {
         dialog.showMessageBox(mainWindow, {
           type: 'info',
-          title: 'Mises a jour',
-          message: 'Nexus est a jour',
-          detail: `Version ${app.getVersion()}.`,
-          buttons: ['Fermer'],
+          title: t('update.title'),
+          message: t('update.currentMessage'),
+          detail: t('update.currentDetail', { version: app.getVersion() }),
+          buttons: [t('about.close')],
         });
       }
     })
     .catch((err) =>
       dialog.showMessageBox(mainWindow, {
         type: 'warning',
-        title: 'Mises a jour',
-        message: 'Verification impossible',
+        title: t('update.title'),
+        message: t('update.failedMessage'),
         detail: err.message,
-        buttons: ['Fermer'],
+        buttons: [t('about.close')],
       })
     );
 }
@@ -1080,42 +1083,44 @@ function createApplicationMenu() {
   const shown = (accelerator) => ({ accelerator, registerAccelerator: false });
   const active = () => views.get(activeId);
 
+  const preference = store.get('language');
+
   const menu = Menu.buildFromTemplate([
     {
-      label: 'Fichier',
+      label: t('menu.file'),
       submenu: [
         {
-          label: 'Nouveau service...',
+          label: t('menu.file.new'),
           ...shown('CommandOrControl+N'),
           click: () => send('hub:new-service', {}),
         },
         { type: 'separator' },
-        { label: 'Masquer dans le tray', click: () => mainWindow?.hide() },
-        { label: 'Quitter', ...shown('CommandOrControl+Q'), click: quitApp },
+        { label: t('menu.file.hide'), click: () => mainWindow?.hide() },
+        { label: t('menu.file.quit'), ...shown('CommandOrControl+Q'), click: quitApp },
       ],
     },
     {
-      label: 'Edition',
+      label: t('menu.edit'),
       submenu: [
-        { role: 'undo', label: 'Annuler' },
-        { role: 'redo', label: 'Retablir' },
+        { role: 'undo', label: t('menu.edit.undo') },
+        { role: 'redo', label: t('menu.edit.redo') },
         { type: 'separator' },
-        { role: 'cut', label: 'Couper' },
-        { role: 'copy', label: 'Copier' },
-        { role: 'paste', label: 'Coller' },
-        { role: 'selectAll', label: 'Tout selectionner' },
+        { role: 'cut', label: t('menu.edit.cut') },
+        { role: 'copy', label: t('menu.edit.copy') },
+        { role: 'paste', label: t('menu.edit.paste') },
+        { role: 'selectAll', label: t('menu.edit.selectAll') },
       ],
     },
     {
-      label: 'Affichage',
+      label: t('menu.view'),
       submenu: [
         {
-          label: 'Recharger le service',
+          label: t('menu.view.reload'),
           ...shown('CommandOrControl+R'),
           click: () => active()?.view.webContents.reload(),
         },
         {
-          label: 'Recharger sans le cache',
+          label: t('menu.view.hardReload'),
           ...shown('CommandOrControl+Shift+R'),
           click: () => {
             const entry = active();
@@ -1126,51 +1131,82 @@ function createApplicationMenu() {
           },
         },
         { type: 'separator' },
+        { role: 'togglefullscreen', label: t('menu.view.fullscreen') },
         {
-          label: 'Mettre le service en veille',
-          click: () => hibernateService(activeId, 'demande manuelle'),
-          enabled: false, // le service affiche n'est jamais mis en veille
-        },
-        { type: 'separator' },
-        { role: 'togglefullscreen', label: 'Plein ecran' },
-        {
-          label: 'Outils de developpement du service',
+          label: t('menu.view.devtoolsService'),
           ...shown('CommandOrControl+Shift+I'),
           click: () => active()?.view.webContents.toggleDevTools(),
         },
         {
-          label: 'Outils de developpement de la sidebar',
+          label: t('menu.view.devtoolsSidebar'),
           ...shown('CommandOrControl+,'),
           click: () => mainWindow?.webContents.toggleDevTools(),
         },
       ],
     },
     {
-      label: 'Services',
+      label: t('menu.services'),
       submenu: orderedServices().map((service, index) => ({
-        label: hibernated.has(service.id) ? `${service.name} (en veille)` : service.name,
+        label: hibernated.has(service.id)
+          ? t('tray.sleeping', { name: service.name })
+          : service.name,
         ...(index < 9 ? shown(`CommandOrControl+${index + 1}`) : {}),
         click: () => showService(service.id),
       })),
     },
     {
-      label: 'Aide',
+      label: t('menu.help'),
       submenu: [
-        { label: 'Rechercher des mises a jour...', click: checkForUpdatesManually },
+        { label: t('menu.help.updates'), click: checkForUpdatesManually },
         { type: 'separator' },
-        { label: 'Documentation', click: () => shell.openExternal(`${REPO_URL}#readme`) },
         {
-          label: 'Signaler un probleme',
-          click: () => shell.openExternal(`${REPO_URL}/issues/new`),
+          label: t('menu.language'),
+          submenu: [
+            {
+              label: t('menu.language.system'),
+              type: 'radio',
+              checked: preference === 'system',
+              click: () => setLanguage('system'),
+            },
+            { type: 'separator' },
+            ...i18n.AVAILABLE.map((code) => ({
+              label: LANGUAGE_NAMES[code] || code,
+              type: 'radio',
+              checked: preference === code,
+              click: () => setLanguage(code),
+            })),
+          ],
         },
-        { label: 'Code source', click: () => shell.openExternal(REPO_URL) },
         { type: 'separator' },
-        { label: 'A propos de Nexus', click: showAbout },
+        { label: t('menu.help.docs'), click: () => shell.openExternal(`${REPO_URL}#readme`) },
+        { label: t('menu.help.issue'), click: () => shell.openExternal(`${REPO_URL}/issues/new`) },
+        { label: t('menu.help.source'), click: () => shell.openExternal(REPO_URL) },
+        { type: 'separator' },
+        { label: t('menu.help.about'), click: showAbout },
       ],
     },
   ]);
 
   Menu.setApplicationMenu(menu);
+}
+
+// Les langues s'affichent dans leur propre langue : un francophone perdu dans
+// une interface anglaise doit reconnaitre "Francais" sans le traduire.
+const LANGUAGE_NAMES = { en: 'English', fr: 'Français' };
+
+/**
+ * Change la langue a chaud. Menus et tray sont reconstruits ici ; la sidebar est
+ * rechargee, ce qui la fait repasser par bootstrap et recuperer le nouveau
+ * dictionnaire. Les services, eux, ne bougent pas.
+ */
+function setLanguage(preference) {
+  store.set('language', preference);
+  const applied = i18n.setLanguage(preference === 'system' ? null : preference);
+  log('i18n', `langue : ${preference} -> ${applied}`);
+
+  createApplicationMenu();
+  refreshTrayMenu();
+  mainWindow?.webContents.reload();
 }
 
 // ---------------------------------------------------------------------------
@@ -1367,12 +1403,12 @@ function saveService(draft) {
   const name = (draft.name || '').trim();
   const url = normalizeUrl(draft.url);
 
-  if (!name) return { error: 'Le nom est obligatoire.' };
-  if (!url) return { error: "L'URL n'est pas valide." };
+  if (!name) return { error: t('error.nameRequired') };
+  if (!url) return { error: t('error.urlInvalid') };
 
   const services = allServices();
   const existing = draft.id ? services.find((service) => service.id === draft.id) : null;
-  if (draft.id && !existing) return { error: 'Ce service n\'existe plus.' };
+  if (draft.id && !existing) return { error: t('error.serviceGone') };
 
   const settings = {
     name,
@@ -1424,19 +1460,17 @@ function saveService(draft) {
 
 async function deleteService(id) {
   const service = getService(id);
-  if (!service) return { error: 'Service introuvable.' };
+  if (!service) return { error: t('error.serviceMissing') };
 
   const { response, checkboxChecked } = await dialog.showMessageBox(mainWindow, {
     type: 'warning',
-    buttons: ['Annuler', 'Supprimer'],
+    buttons: [t('delete.cancel'), t('delete.confirm')],
     defaultId: 0,
     cancelId: 0,
-    title: 'Supprimer le service',
-    message: `Supprimer « ${service.name} » ?`,
-    detail:
-      'Le service disparait de la sidebar. Sa session (connexion, cookies) est conservee ' +
-      'sur le disque, sauf si tu coches la case ci-dessous.',
-    checkboxLabel: 'Effacer aussi les donnees de session',
+    title: t('delete.title'),
+    message: t('delete.message', { name: service.name }),
+    detail: t('delete.detail'),
+    checkboxLabel: t('delete.checkbox'),
     checkboxChecked: false,
   });
 
@@ -1492,6 +1526,10 @@ ipcMain.handle('hub:bootstrap', () => ({
   services: orderedServices().map(serviceForRenderer),
   activeId,
   version: app.getVersion(),
+  // Le renderer est sandboxe : il ne lit pas les fichiers de langue, il recoit
+  // le dictionnaire deja resolu.
+  strings: i18n.dict(),
+  language: i18n.current(),
   // Le domaine sert de cle pour les vignettes, chargees a part.
   catalog: CATALOG.map((entry) => ({ ...entry, domain: catalogIcons.domainOf(entry.url) })),
   catalogIcons: catalogIcons.known(),
@@ -1547,11 +1585,11 @@ ipcMain.on('hub:service-menu', (_e, id) => {
   const menu = Menu.buildFromTemplate([
     { label: service.name, enabled: false },
     { type: 'separator' },
-    { label: 'Modifier...', click: () => send('hub:edit-service', { id }) },
-    { label: 'Supprimer...', click: () => deleteService(id) },
+    { label: t('ctx.edit'), click: () => send('hub:edit-service', { id }) },
+    { label: t('ctx.delete'), click: () => deleteService(id) },
     { type: 'separator' },
     {
-      label: 'Notifications',
+      label: t('ctx.notifications'),
       type: 'checkbox',
       checked: !isMuted(id),
       // On repart de l'etat stocke, pas de item.checked : selon les plateformes
@@ -1560,24 +1598,24 @@ ipcMain.on('hub:service-menu', (_e, id) => {
       click: () => setMuted(id, !isMuted(id)),
     },
     {
-      label: asleep ? 'En veille' : 'Mettre en veille',
+      label: asleep ? t('ctx.sleeping') : t('ctx.sleep'),
       enabled: Boolean(entry) && id !== activeId,
       click: () => hibernateService(id, 'demande manuelle'),
     },
     { type: 'separator' },
-    { label: "Changer l'icone...", click: () => chooseIcon(id) },
-    { label: 'Icone par defaut', enabled: Boolean(storedIcon(id)), click: () => resetIcon(id) },
+    { label: t('ctx.icon'), click: () => chooseIcon(id) },
+    { label: t('ctx.iconDefault'), enabled: Boolean(storedIcon(id)), click: () => resetIcon(id) },
     { type: 'separator' },
-    { label: 'Monter', enabled: index > 0, click: () => moveService(id, -1) },
+    { label: t('ctx.up'), enabled: index > 0, click: () => moveService(id, -1) },
     {
-      label: 'Descendre',
+      label: t('ctx.down'),
       enabled: index >= 0 && index < order.length - 1,
       click: () => moveService(id, 1),
     },
     { type: 'separator' },
-    { label: 'Recharger', enabled: Boolean(entry), click: () => entry?.view.webContents.reload() },
+    { label: t('ctx.reload'), enabled: Boolean(entry), click: () => entry?.view.webContents.reload() },
     {
-      label: 'Outils de developpement',
+      label: t('ctx.devtools'),
       enabled: Boolean(entry),
       click: () => entry?.view.webContents.toggleDevTools(),
     },
@@ -1634,6 +1672,9 @@ ipcMain.on('hub:retry', (_e, id) => {
 
 app.whenReady().then(() => {
   log('app', `Nexus ${app.getVersion()} — Electron ${process.versions.electron} / Chromium ${process.versions.chrome}`);
+  const preference = store.get('language');
+  log('i18n', `langue : ${i18n.init(preference === 'system' ? null : preference)}`);
+
   seedServices();
 
   catalogIcons.init({
@@ -1651,7 +1692,7 @@ app.whenReady().then(() => {
   // Prechargement des vignettes du catalogue, apres le demarrage des services :
   // la grille doit etre chaude AVANT que le formulaire ne s'ouvre. Un cache
   // frais ne declenche aucune requete.
-  setTimeout(() => catalogIcons.refresh(CATALOG.map((entry) => entry.url)), 8000);
+  setTimeout(() => catalogIcons.refresh(CATALOG), 8000);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

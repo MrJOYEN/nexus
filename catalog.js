@@ -16,6 +16,14 @@
  * exigent un User-Agent maquille. Seul WhatsApp est confirme a ce jour ; si un
  * autre service affiche "navigateur non supporte", cocher l'option dans le
  * formulaire suffit — et une pull request est bienvenue.
+ *
+ * `icon:` force la source de la vignette quand la detection automatique se
+ * trompe. Deux cas rencontres :
+ *   - les produits Google partagent un domaine : les annuaires d'icones
+ *     renvoient le G generique pour calendar.google.com comme pour gmail. Les
+ *     vraies icones produit sont publiees sur gstatic ;
+ *   - app.brevo.com sert un apple-touch-icon annonce en image/png qui n'en est
+ *     pas un.
  */
 
 const CATALOG = [
@@ -26,12 +34,13 @@ const CATALOG = [
   { name: 'Slack', url: 'https://app.slack.com/client', color: '#4A154B', initials: 'SL', category: 'Messagerie' },
   { name: 'Messenger', url: 'https://www.messenger.com', color: '#0084FF', initials: 'MS', category: 'Messagerie' },
   { name: 'Microsoft Teams', url: 'https://teams.microsoft.com', color: '#6264A7', initials: 'MT', category: 'Messagerie' },
-  { name: 'Google Chat', url: 'https://mail.google.com/chat/', color: '#00AC47', initials: 'GC', category: 'Messagerie' },
+  { name: 'Google Chat', url: 'https://mail.google.com/chat/', color: '#00AC47', initials: 'GC', category: 'Messagerie', icon: 'https://www.gstatic.com/images/branding/product/2x/chat_2020q4_48dp.png' },
   { name: 'Element', url: 'https://app.element.io', color: '#0DBD8B', initials: 'EL', category: 'Messagerie' },
-  { name: 'Skype', url: 'https://web.skype.com', color: '#00AFF0', initials: 'SK', category: 'Messagerie' },
+  // Skype a ete retire par Microsoft en mai 2025 : web.skype.com redirige vers
+  // Teams, logo compris.
 
   // -------------------------------------------------------------------- email
-  { name: 'Gmail', url: 'https://mail.google.com', color: '#EA4335', initials: 'GM', category: 'Email' },
+  { name: 'Gmail', url: 'https://mail.google.com', color: '#EA4335', initials: 'GM', category: 'Email', icon: 'https://www.gstatic.com/images/branding/product/2x/gmail_2020q4_48dp.png' },
   { name: 'Outlook', url: 'https://outlook.live.com/mail/', color: '#0078D4', initials: 'OL', category: 'Email' },
   { name: 'Proton Mail', url: 'https://mail.proton.me', color: '#6D4AFF', initials: 'PM', category: 'Email' },
   { name: 'Fastmail', url: 'https://app.fastmail.com', color: '#0067B9', initials: 'FM', category: 'Email' },
@@ -40,9 +49,9 @@ const CATALOG = [
   { name: 'Tuta', url: 'https://app.tuta.com', color: '#840010', initials: 'TU', category: 'Email' },
 
   // ------------------------------------------------------------- productivite
-  { name: 'Google Calendar', url: 'https://calendar.google.com', color: '#4285F4', initials: 'GA', category: 'Productivite' },
-  { name: 'Google Drive', url: 'https://drive.google.com', color: '#1FA463', initials: 'GD', category: 'Productivite' },
-  { name: 'Google Keep', url: 'https://keep.google.com', color: '#FBBC04', initials: 'GK', category: 'Productivite' },
+  { name: 'Google Calendar', url: 'https://calendar.google.com', color: '#4285F4', initials: 'GA', category: 'Productivite', icon: 'https://ssl.gstatic.com/calendar/images/dynamiclogo_2020q4/calendar_31_2x.png' },
+  { name: 'Google Drive', url: 'https://drive.google.com', color: '#1FA463', initials: 'GD', category: 'Productivite', icon: 'https://ssl.gstatic.com/images/branding/product/2x/drive_2020q4_48dp.png' },
+  { name: 'Google Keep', url: 'https://keep.google.com', color: '#FBBC04', initials: 'GK', category: 'Productivite', icon: 'https://ssl.gstatic.com/keep/icon_2020q4v2_128.png' },
   { name: 'Notion', url: 'https://www.notion.so', color: '#111111', initials: 'NO', category: 'Productivite' },
   { name: 'Trello', url: 'https://trello.com', color: '#0079BF', initials: 'TR', category: 'Productivite' },
   { name: 'Asana', url: 'https://app.asana.com', color: '#F06A6A', initials: 'AS', category: 'Productivite' },
@@ -90,7 +99,7 @@ const CATALOG = [
   { name: 'HubSpot', url: 'https://app.hubspot.com', color: '#FF7A59', initials: 'HS', category: 'Business' },
   { name: 'Intercom', url: 'https://app.intercom.com', color: '#1F8DED', initials: 'IC', category: 'Business' },
   { name: 'Crisp', url: 'https://app.crisp.chat', color: '#1972F5', initials: 'CR', category: 'Business' },
-  { name: 'Brevo', url: 'https://app.brevo.com', color: '#0B996E', initials: 'BV', category: 'Business' },
+  { name: 'Brevo', url: 'https://app.brevo.com', color: '#0B996E', initials: 'BV', category: 'Business', icon: 'https://icons.duckduckgo.com/ip3/www.brevo.com.ico' },
 ];
 
 module.exports = { CATALOG };

@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { app, net, nativeImage } = require('electron');
-const { sniffMime, iconWidth, readIco, toDataUrl, SVG_SCORE } = require('./images');
+const { sniffMime, iconWidth, readIco, packIco, toDataUrl, SVG_SCORE } = require('./images');
 
 /**
  * Vignettes du catalogue.
@@ -20,7 +20,10 @@ const { sniffMime, iconWidth, readIco, toDataUrl, SVG_SCORE } = require('./image
 const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // un mois
 const CONCURRENCY = 6;
 const REQUEST_TIMEOUT_MS = 6000;
-const MAX_BYTES = 250 * 1024;
+// Garde-fou contre un telechargement absurde, pas contre une grosse icone : un
+// .ico multi-resolutions depasse facilement 250 Ko et sera de toute facon reduit
+// a une seule frame de 128px avant stockage.
+const MAX_BYTES = 1024 * 1024;
 const GOOD_ENOUGH = 128; // au-dela, inutile d'essayer les candidats suivants
 
 let cacheFile = null;
@@ -68,7 +71,7 @@ function domainOf(url) {
  * modernes ; le service de DuckDuckGo sert de filet quand le site n'expose rien
  * a un chemin devinable ; favicon.ico est le dernier recours.
  */
-function candidatesFor(domain) {
+function candidatesFor(domain, override) {
   const bare = domain.replace(/^www\./, '');
   const labels = bare.split('.');
   // Beaucoup de services vivent sur un sous-domaine applicatif qui n'expose
@@ -77,6 +80,9 @@ function candidatesFor(domain) {
   const root = labels.length > 2 ? labels.slice(-2).join('.') : null;
 
   return [
+    // Une source declaree dans le catalogue passe avant tout : elle n'est la que
+    // parce que la detection automatique s'est trompee.
+    ...(override ? [override] : []),
     `https://${domain}/apple-touch-icon.png`,
     `https://icons.duckduckgo.com/ip3/${bare}.ico`,
     `https://${domain}/favicon.ico`,
@@ -97,9 +103,12 @@ function shrink(candidate) {
   // Un .ico embarque toutes les tailles a la fois : on ne garde que la plus
   // grande frame, quand elle est en PNG.
   if (/icon/i.test(current.mime)) {
-    const frame = readIco(current.buffer);
-    if (!frame?.buffer) return current;
-    current = { buffer: frame.buffer, mime: 'image/png' };
+    const ico = readIco(current.buffer);
+    if (!ico) return current;
+
+    current = ico.best.isPng
+      ? { buffer: ico.best.data, mime: 'image/png' }
+      : { buffer: packIco(ico.best), mime: 'image/x-icon' };
   }
 
   const image = nativeImage.createFromBuffer(current.buffer);
@@ -140,10 +149,21 @@ async function download(url) {
   }
 }
 
-async function fetchIcon(domain) {
+async function fetchIcon(domain, override) {
+  const candidates = candidatesFor(domain, override);
+
+  // Une source declaree l'emporte sans discussion : elle a ete choisie a la main
+  // precisement parce que le meilleur score automatique donnait la mauvaise
+  // icone (le G generique de Google pour tous ses produits, par exemple).
+  if (override) {
+    const forced = await download(candidates[0]);
+    if (forced) return forced;
+    log('catalogue', `${domain} : source declaree indisponible, retour a la detection`);
+  }
+
   let best = null;
 
-  for (const url of candidatesFor(domain)) {
+  for (const url of candidates.slice(override ? 1 : 0)) {
     const found = await download(url);
     if (found && (!best || found.width > best.width)) best = found;
     if (best && best.width >= GOOD_ENOUGH) break;
@@ -169,11 +189,17 @@ function known() {
  * Met a jour ce qui manque ou a plus d'un mois. Les entrees fraiches ne sont
  * jamais retelechargees, donc un demarrage normal ne fait aucune requete.
  */
-async function refresh(urls) {
+async function refresh(entries) {
   if (running) return;
 
-  const domains = [...new Set(urls.map(domainOf).filter(Boolean))].filter((domain) =>
-    isStale(cache[domain])
+  const overrides = new Map();
+  for (const entry of entries) {
+    const domain = domainOf(entry.url);
+    if (domain && entry.icon && !overrides.has(domain)) overrides.set(domain, entry.icon);
+  }
+
+  const domains = [...new Set(entries.map((entry) => domainOf(entry.url)).filter(Boolean))].filter(
+    (domain) => isStale(cache[domain])
   );
 
   if (!domains.length) return;
@@ -187,7 +213,7 @@ async function refresh(urls) {
   const worker = async () => {
     while (index < domains.length) {
       const domain = domains[index++];
-      const found = await fetchIcon(domain);
+      const found = await fetchIcon(domain, overrides.get(domain));
 
       if (found) {
         cache[domain] = { ...found, fetchedAt: Date.now() };

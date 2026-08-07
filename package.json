@@ -33,13 +33,11 @@
       "buildResources": "assets"
     },
     "files": [
-      "main.js",
-      "preload.js",
-      "services.js",
-      "renderer/**/*",
-      "assets/**/*",
+      "**/*",
+      "!handoff/**",
       "!assets/*.bmp",
-      "package.json"
+      "!*.md",
+      "!.*"
     ],
     "win": {
       "target": [

@@ -30,6 +30,33 @@ Les raccourcis passent par `before-input-event` (branche sur la sidebar **et** s
 chaque vue de service) plutot que par `globalShortcut` : ils ne fonctionnent que
 quand l'app a le focus, et ne volent donc pas `Ctrl+1` au reste du systeme.
 
+## Langues
+
+Interface en **anglais et francais**. La langue suit celle du systeme et se force
+depuis _Aide > Langue_. Le changement est immediat : menus et tray sont
+reconstruits, la barre laterale rechargee. Les services, eux, ne bougent pas.
+
+Le process principal est seul a lire `locales/*.json` : le renderer, sandboxe,
+recoit le dictionnaire deja resolu au demarrage. Une seule source de verite,
+aucun fichier charge deux fois.
+
+**Ajouter une langue** : copier `locales/en.json`, traduire les valeurs, ajouter
+le code a `AVAILABLE` dans `i18n.js` et son libelle a `LANGUAGE_NAMES` dans
+`main.js`. L'anglais sert de filet — une cle absente d'une traduction retombe
+dessus au lieu d'afficher un identifiant technique. Pour verifier qu'il n'en
+manque aucune :
+
+```bash
+node -e "const en=require('./locales/en.json'),fr=require('./locales/fr.json');console.log(Object.keys(en).filter(k=>!(k in fr)))"
+```
+
+Les libelles statiques portent leur cle dans le HTML (`data-i18n`,
+`data-i18n-placeholder`, `data-i18n-title`) et sont remplis au demarrage, avant
+tout rendu — sinon l'anglais apparaitrait une fraction de seconde.
+
+Les journaux et les commentaires du code restent en francais : ils s'adressent a
+qui lit le code, pas a qui utilise l'app.
+
 ## Barre de menus
 
 Masquee par defaut, **revelee par `Alt`** : l'app reste epuree sans priver d'un
@@ -270,8 +297,11 @@ Deux reductions avant stockage, sans quoi le cache depasse le megaoctet et
 transite en entier vers le renderer a chaque demarrage :
 
 - un `.ico` est un **conteneur** qui embarque la meme icone en 16, 32, 48, 128 et
-  256px. On n'en affiche qu'une : `readIco` lit la table des matieres et ne garde
-  que la plus grande frame, quand elle est deja en PNG ;
+  256px. `readIco` lit sa table des matieres et ne garde qu'une frame — non pas
+  la plus grande, mais **la plus petite qui suffise** (128px). Une frame de 256px
+  en BMP brut pese 256 Ko a elle seule, pour un logo affiche a 44px. Quand la
+  frame retenue n'est pas en PNG, `packIco` la remet dans un conteneur d'une
+  seule entree plutot que de garder le lot ;
 - les bitmaps au-dela de 192px sont ramenes a 128, largement assez pour un
   affichage a 44px.
 

@@ -71,11 +71,13 @@ function webpWidth(buffer) {
  * en PNG (le cas courant pour les grandes tailles). Une frame en BMP brut n'est
  * pas extraite : nativeImage ne saurait pas la relire hors de son conteneur.
  */
+const ICO_TARGET = 128; // taille suffisante pour un affichage a 44px, meme en HiDPI
+
 function readIco(buffer) {
   if (buffer.length < 6 || buffer.readUInt16LE(0) !== 0 || buffer.readUInt16LE(2) !== 1) return null;
 
   const count = buffer.readUInt16LE(4);
-  let best = null;
+  const frames = [];
 
   for (let i = 0; i < count; i++) {
     const entry = 6 + i * 16;
@@ -84,23 +86,52 @@ function readIco(buffer) {
     const width = buffer.readUInt8(entry) || 256; // 0 signifie 256
     const size = buffer.readUInt32LE(entry + 8);
     const offset = buffer.readUInt32LE(entry + 12);
-
     if (offset + size > buffer.length) continue;
-    if (!best || width > best.width) best = { width, size, offset };
+
+    const data = buffer.subarray(offset, offset + size);
+    const isPng = data.length > 8 && data[0] === 0x89 && data.toString('latin1', 1, 4) === 'PNG';
+
+    frames.push({ width, isPng, data, entry: buffer.subarray(entry, entry + 16) });
   }
 
-  if (!best) return null;
+  if (!frames.length) return null;
 
-  const frame = buffer.subarray(best.offset, best.offset + best.size);
-  const isPng = frame.length > 8 && frame[0] === 0x89 && frame.toString('latin1', 1, 4) === 'PNG';
+  // On ne cherche pas la plus grande frame mais la plus petite qui suffise.
+  // Une frame de 256px en BMP brut pese 256 Ko a elle seule, pour un logo
+  // affiche a 44px — et les frames PNG sont toujours preferables a taille egale.
+  const usable = frames.filter((frame) => frame.width >= ICO_TARGET);
+  const pool = usable.length ? usable : frames;
+  const best = pool.sort(
+    (a, b) => a.width - b.width || Number(b.isPng) - Number(a.isPng)
+  )[0];
 
-  return { width: best.width, buffer: isPng ? frame : null };
+  return { width: Math.max(...frames.map((frame) => frame.width)), best };
+}
+
+/**
+ * Reconstruit un .ico ne contenant qu'une seule frame. Utile quand la frame
+ * retenue est en BMP brut : elle n'est pas exploitable seule, mais reste
+ * affichable une fois remise dans un conteneur minimal.
+ */
+function packIco(frame) {
+  const header = Buffer.alloc(6);
+  header.writeUInt16LE(0, 0);
+  header.writeUInt16LE(1, 2);
+  header.writeUInt16LE(1, 4);
+
+  const entry = Buffer.from(frame.entry); // on garde planes et bitCount d'origine
+  entry.writeUInt32LE(frame.data.length, 8);
+  entry.writeUInt32LE(header.length + 16, 12);
+
+  return Buffer.concat([header, entry, frame.data]);
 }
 
 /** Score de qualite d'une icone = sa largeur en pixels. */
 function iconWidth(candidate) {
   if (/svg/i.test(candidate.mime)) return SVG_SCORE;
   if (/webp/i.test(candidate.mime)) return webpWidth(candidate.buffer);
+  // Pour le score on prend la plus grande frame du conteneur : c'est elle qui
+  // dit la qualite reelle de l'icone, meme si on n'en stockera pas autant.
   if (/icon/i.test(candidate.mime)) return readIco(candidate.buffer)?.width || 128;
 
   return nativeImage.createFromBuffer(candidate.buffer).getSize().width || 0;
@@ -124,4 +155,13 @@ function toDataUrl(candidate) {
   return `data:${candidate.mime};base64,${candidate.buffer.toString('base64')}`;
 }
 
-module.exports = { SVG_SCORE, sniffMime, webpWidth, readIco, iconWidth, decodeDataUrl, toDataUrl };
+module.exports = {
+  SVG_SCORE,
+  sniffMime,
+  webpWidth,
+  readIco,
+  packIco,
+  iconWidth,
+  decodeDataUrl,
+  toDataUrl,
+};

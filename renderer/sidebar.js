@@ -48,6 +48,34 @@ let activeId = null;
 let editingId = null;
 let catalog = [];
 let catalogIcons = {};
+let strings = {};
+
+// ---------------------------------------------------------------------------
+// Traduction
+//
+// Le renderer ne lit aucun fichier de langue : main.js lui envoie le
+// dictionnaire deja resolu. Une cle absente s'affiche telle quelle, ce qui la
+// rend visible immediatement plutot que de la laisser passer.
+// ---------------------------------------------------------------------------
+
+function t(key, vars) {
+  const raw = strings[key] ?? key;
+  if (!vars) return raw;
+  return raw.replace(/\{(\w+)\}/g, (match, name) => (name in vars ? String(vars[name]) : match));
+}
+
+/** Applique les cles posees dans le HTML (data-i18n, -placeholder, -title). */
+function applyTranslations() {
+  for (const el of document.querySelectorAll('[data-i18n]')) {
+    el.textContent = t(el.dataset.i18n);
+  }
+  for (const el of document.querySelectorAll('[data-i18n-placeholder]')) {
+    el.placeholder = t(el.dataset.i18nPlaceholder);
+  }
+  for (const el of document.querySelectorAll('[data-i18n-title]')) {
+    el.title = t(el.dataset.i18nTitle);
+  }
+}
 /** domaine -> elements affiches, pour les mettre a jour quand l'icone arrive. */
 let tilesByDomain = new Map();
 let pickedIcon = null;
@@ -297,7 +325,7 @@ function updateCounters() {
     return;
   }
 
-  const description = total > 0 ? `${total} messages non lus` : 'Messages non lus';
+  const description = total > 0 ? t('sidebar.unread', { count: total }) : t('sidebar.unreadDot');
   window.hub.setOverlayBadge(drawOverlayBadge(total, total === 0), description);
   if (trayBaseReady) window.hub.setTrayIcon(drawTrayIcon(total, total === 0));
 }
@@ -372,16 +400,18 @@ function refreshOverlay() {
   overlayAvatar.textContent = item.service.initials;
   overlayAvatar.style.setProperty('--service-color', item.service.color);
 
+  const name = item.service.name;
+
   if (item.status === 'error') {
-    overlayTitle.textContent = `${item.service.name} n'a pas pu se charger`;
+    overlayTitle.textContent = t('overlay.errorTitle', { name });
     overlayMessage.textContent = item.message || '';
     overlayRetry.classList.remove('hidden');
   } else if (item.status === 'hibernated') {
-    overlayTitle.textContent = `${item.service.name} est en veille`;
-    overlayMessage.textContent = 'Son process a ete libere. Clique pour le reveiller.';
+    overlayTitle.textContent = t('overlay.sleepingTitle', { name });
+    overlayMessage.textContent = t('overlay.sleepingBody');
     overlayRetry.classList.remove('hidden');
   } else {
-    overlayTitle.textContent = `Chargement de ${item.service.name}...`;
+    overlayTitle.textContent = t('overlay.loading', { name });
     overlayMessage.textContent = '';
     overlayRetry.classList.add('hidden');
   }
@@ -500,7 +530,7 @@ function renderCatalog(query) {
     label.textContent = custom.name;
 
     const hint = document.createElement('small');
-    hint.textContent = 'Custom address';
+    hint.textContent = t('picker.custom');
 
     tile.append(buildLogo({ ...custom, initials: '+' }, 'md'), label, hint);
     tile.addEventListener('click', () => pickCatalogEntry(custom));
@@ -575,7 +605,7 @@ searchInput.addEventListener('keydown', (event) => {
 
 function refreshPreview() {
   const name = fields.name.value.trim();
-  previewName.textContent = name || 'New service';
+  previewName.textContent = name || t('form.newService');
 
   const img = previewLogo.querySelector('img');
   const text = previewLogo.querySelector('span');
@@ -610,8 +640,8 @@ function openForm(service) {
     // deja etablis.
     modal.classList.add('picked');
     formTitle.textContent = service.name;
-    formSave.textContent = 'Save';
-    formBack.textContent = 'Cancel';
+    formSave.textContent = t('form.save');
+    formBack.textContent = t('form.cancel');
 
     fields.name.value = service.name || '';
     fields.url.value = service.url || '';
@@ -623,12 +653,14 @@ function openForm(service) {
 
     const index = [...items.keys()].indexOf(service.id);
     previewSlot.textContent =
-      index >= 0 && index < 9 ? `Position ${index + 1} · Ctrl+${index + 1}` : 'In the sidebar';
+      index >= 0 && index < 9
+        ? t('form.slotPosition', { n: index + 1 })
+        : t('form.slotSidebar');
   } else {
     modal.classList.remove('picked');
-    formTitle.textContent = 'Add a service';
-    formSave.textContent = 'Add service';
-    formBack.textContent = 'Back';
+    formTitle.textContent = t('picker.title');
+    formSave.textContent = t('form.add');
+    formBack.textContent = t('form.back');
 
     fields.name.value = '';
     fields.url.value = '';
@@ -638,7 +670,7 @@ function openForm(service) {
     fields.spoof.checked = false;
     fields.preload.checked = true;
 
-    previewSlot.textContent = 'Appears at the end of the sidebar';
+    previewSlot.textContent = t('form.slotEnd');
     searchInput.value = '';
     renderCatalog('');
   }
@@ -716,8 +748,8 @@ function showUpdate(update) {
   const ready = update.state === 'ready';
   updateButton.classList.toggle('hidden', !ready);
   updateButton.title = ready
-    ? `Installer la version ${update.version} et redemarrer`
-    : `Telechargement de ${update.version}...`;
+    ? t('sidebar.updateReady', { version: update.version })
+    : t('sidebar.updateDownloading', { version: update.version });
   console.log(`[sidebar] mise a jour ${update.state} : ${update.version}`);
 }
 
@@ -727,6 +759,13 @@ function showUpdate(update) {
 
 (async () => {
   const boot = await window.hub.bootstrap();
+
+  // La traduction s'applique avant tout rendu : sinon l'anglais du HTML
+  // apparaitrait une fraction de seconde avant d'etre remplace.
+  strings = boot.strings || {};
+  document.documentElement.lang = boot.language || 'en';
+  applyTranslations();
+
   if (boot.trayBase) trayBase.src = boot.trayBase;
   catalog = boot.catalog || [];
   catalogIcons = boot.catalogIcons || {};

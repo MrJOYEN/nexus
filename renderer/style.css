@@ -433,10 +433,15 @@ body {
   color: var(--text-dim);
 }
 
-.search-bar input {
+/* Selecteur volontairement plus specifique que la regle input[type="text"]
+   generique : sans ca le champ reprend sa bordure et son fond, et on voit une
+   barre dans la barre. */
+.search-bar input[type="text"] {
   flex: 1;
+  width: auto;
   padding: 11px 0;
   border: 0;
+  border-radius: 0;
   background: none;
   color: var(--text);
   font-family: inherit;
@@ -445,8 +450,9 @@ body {
   cursor: text;
 }
 
-.search-bar input:focus {
+.search-bar input[type="text"]:focus {
   outline: none;
+  border: 0;
 }
 
 #catalog-grid {
