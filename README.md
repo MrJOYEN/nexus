@@ -1,8 +1,17 @@
 # Nexus
 
-Wrapper desktop Electron (Windows) qui regroupe 6 services web dans une seule
+Wrapper desktop Electron (Windows) qui regroupe tes services web dans une seule
 fenetre avec une sidebar, chaque service tournant dans une **session totalement
-isolee** (3 comptes WhatsApp connectes en meme temps, 2 Discord, 1 Google Calendar).
+isolee**.
+
+C'est cette isolation qui fait tout l'interet : plusieurs comptes du **meme**
+service peuvent rester connectes en parallele — trois WhatsApp sur trois numeros,
+deux Discord, autant de boites qu'on veut — sans jamais se deconnecter les uns
+les autres. La ou un navigateur classique n'en tolere qu'un seul a la fois.
+
+L'app est livree avec trois services d'exemple (WhatsApp, Discord, Google
+Calendar). Tout le reste s'ajoute depuis l'interface : bouton `+`, une URL, et
+c'est fait.
 
 ## Raccourcis clavier
 
@@ -97,7 +106,7 @@ retirer l'appel a `setAudioMuted` dans `applyMuteState` (`main.js`).
 ## Tray & fermeture
 
 - **Clic gauche** sur l'icone : affiche / masque la fenetre.
-- **Clic droit** : les 6 services en acces direct (ouvre + focus) + Quitter.
+- **Clic droit** : tous les services en acces direct (ouvre + focus) + Quitter.
 - **Clic sur X** : la fenetre est masquee dans le tray, l'app continue de tourner
   (les services restent connectes et continuent d'emettre des notifications).
   Pour quitter pour de vrai : menu tray > Quitter, ou `Ctrl+Q`.
@@ -281,9 +290,10 @@ l'image occupe tout l'avatar (48px) et c'est sa propre forme qui prime. Le rayon
 de 14px adoucit seulement les icones carrees.
 
 Une pastille d'initiales n'apparait que sur les icones **automatiques** (favicon),
-la ou deux services peuvent etre indiscernables — les 3 WhatsApp. Des que tu
-choisis une icone toi-meme, elle disparait. Pour la supprimer partout, retirer la
-regle `.service.has-icon.auto-icon .chip` dans `renderer/style.css`.
+la ou deux services peuvent etre indiscernables : plusieurs comptes d'un meme
+service partagent forcement la meme favicon. Des que tu choisis une icone
+toi-meme, elle disparait. Pour la supprimer partout, retirer la regle
+`.service.has-icon.auto-icon .chip` dans `renderer/style.css`.
 
 Quand un site declare plusieurs icones, la plus **definie** est retenue : les
 candidates sont comparees sur leurs dimensions reelles (pas sur leur poids, un
@@ -394,13 +404,14 @@ Si le blocage persiste : mettre a jour la version de Chrome dans `WHATSAPP_UA`
 
 Timeout de 15s (`LOAD_TIMEOUT_MS` dans `main.js`). Causes typiques : pas de reseau,
 proxy/VPN, ou service down. Le bouton relance simplement `loadURL`.
-`Ctrl+Shift+I` (etape 6) ouvrira les DevTools de la vue pour voir l'erreur reelle.
+`Ctrl+Shift+I` ouvre les DevTools de la vue pour voir l'erreur reelle.
 
-### Les 3 WhatsApp se deconnectent mutuellement
+### Plusieurs comptes du meme service se deconnectent mutuellement
 
-Verifier que chaque service a bien une `partition` **differente** et prefixee
-`persist:` dans `services.js`. Deux services partageant la meme partition partagent
-cookies et localStorage.
+Chaque service doit avoir une `partition` **differente**, prefixee `persist:`.
+Deux services qui partagent une partition partagent cookies et localStorage, donc
+la session. Les services crees depuis l'app obtiennent la leur automatiquement ;
+le cas ne se presente qu'en editant `config.json` a la main.
 
 ### Les notifications n'apparaissent pas dans le centre de notifications Windows
 
@@ -433,22 +444,35 @@ Profil vide, verrou distinct, sessions reelles intactes. C'est aussi la seule
 facon de verifier un comportement de premier lancement (la semence des services,
 par exemple) sans repartir de zero sur ta vraie configuration.
 
-## Feuille de route
+## Ce que Nexus sait faire
 
-- [x] 1. Scaffolding + `package.json`
-- [x] 2. POC mono-service : WebContentsView + partition isolee + UA spoofing
-- [x] 3. Sidebar complete + switching entre services
-- [x] 4. Les 6 services + verification de l'isolation
-- [x] 5. Badges de notifications (parsing `page-title-updated`) + notifs natives
-- [x] 6. Tray + raccourcis clavier + persistance (electron-store) + close-to-tray
-- [x] 7. Build NSIS (`dist\Nexus-Setup-1.0.0.exe`, 95 Mo) — installation a
-      verifier a la main sur le poste cible
+- **Sessions etanches** — une partition par service, donc plusieurs comptes du
+  meme service connectes en parallele.
+- **Services editables depuis l'app** — creation, edition, suppression,
+  reordonnancement par glisser-deposer.
+- **Notifications Windows natives**, coupables service par service — y compris
+  le son joue par la page, que l'API de notification ne controle pas.
+- **Compteurs de non-lus** sur l'icone de la sidebar, la barre des taches et le
+  tray, lus dans le titre des pages.
+- **Icones** : la tienne, sinon la meilleure favicon du site, sinon les
+  initiales.
+- **Mise en veille** manuelle ou automatique, pour rendre la memoire d'un
+  service qu'on ne consulte plus.
+- **Tray, raccourcis clavier, close-to-tray**, geometrie de fenetre persistee.
+- **Mises a jour automatiques** via GitHub Releases.
 
-Ajoute apres coup : icones personnalisables (clic droit), compteur sur la barre
-des taches et sur le tray, reordonnancement par glisser-deposer, coupure des
-notifications par service, chargement paresseux, **creation et edition de
-services depuis l'app**, **mise en veille manuelle et automatique**, **mises a
-jour automatiques via GitHub Releases**.
+Ce qui n'existe pas : macOS et Linux (le code est proche mais rien n'est teste),
+la signature de code, et toute forme de synchronisation entre machines.
+
+## Limites connues
+
+- Le compteur de non-lus vaut ce que le service publie dans son titre — WhatsApp
+  y met un nombre de **conversations**, pas de messages.
+- Un service en veille ne notifie plus tant qu'il n'est pas reveille.
+- Couper les notifications d'un service coupe aussi son audio, donc le son de ses
+  appels.
+- L'installeur n'est pas signe : SmartScreen affiche un avertissement au premier
+  lancement.
 
 ## Note sur electron-store
 

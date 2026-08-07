@@ -37,55 +37,37 @@
 const CHROME_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
 
+/**
+ * Volontairement minimal et neutre : de quoi comprendre l'app en trois clics,
+ * rien de plus. Une installation neuve ne doit pas commencer par le menage de
+ * six services qui appartiennent a quelqu'un d'autre.
+ *
+ * Pour plusieurs comptes d'un meme service, dupliquer l'entree en changeant
+ * `id` et `partition` — ou, plus simplement, utiliser le bouton + de la sidebar.
+ */
 const DEFAULT_SERVICES = [
   {
-    id: 'wa-redlife',
-    name: 'WhatsApp Red Life',
+    id: 'whatsapp',
+    name: 'WhatsApp',
     url: 'https://web.whatsapp.com',
-    partition: 'persist:wa-redlife',
+    partition: 'persist:whatsapp',
     color: '#25D366',
-    initials: 'RL',
-    spoofUserAgent: true,
+    initials: 'WA',
+    spoofUserAgent: true, // WhatsApp Web refuse les navigateurs Electron
   },
   {
-    id: 'wa-certiflash',
-    name: 'WhatsApp CertiFlash',
-    url: 'https://web.whatsapp.com',
-    partition: 'persist:wa-certiflash',
-    color: '#25D366',
-    initials: 'CF',
-    spoofUserAgent: true,
-  },
-  {
-    id: 'wa-alphadigital',
-    name: 'WhatsApp Alpha Digital',
-    url: 'https://web.whatsapp.com',
-    partition: 'persist:wa-alphadigital',
-    color: '#25D366',
-    initials: 'AD',
-    spoofUserAgent: true,
-  },
-  {
-    id: 'discord-perso',
-    name: 'Discord Perso',
+    id: 'discord',
+    name: 'Discord',
     url: 'https://discord.com/app',
-    partition: 'persist:discord-perso',
+    partition: 'persist:discord',
     color: '#5865F2',
-    initials: 'DP',
+    initials: 'DC',
   },
   {
-    id: 'discord-pro',
-    name: 'Discord Pro',
-    url: 'https://discord.com/app',
-    partition: 'persist:discord-pro',
-    color: '#5865F2',
-    initials: 'DPro',
-  },
-  {
-    id: 'gcal',
+    id: 'google-calendar',
     name: 'Google Calendar',
     url: 'https://calendar.google.com',
-    partition: 'persist:gcal',
+    partition: 'persist:google-calendar',
     color: '#4285F4',
     initials: 'GC',
   },
