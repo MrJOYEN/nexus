@@ -45,8 +45,14 @@ const store = new Store({
     icons: {},
     // Ordre d'affichage choisi par l'utilisateur (drag & drop dans la sidebar).
     order: [],
+    // id -> true : services dont les notifications sont coupees.
+    muted: {},
   },
 });
+
+function isMuted(id) {
+  return Boolean(store.get('muted')?.[id]);
+}
 
 /**
  * Services dans l'ordre d'affichage : celui stocke, complete par services.js.
@@ -134,14 +140,19 @@ function getServiceSession(service) {
     log('session', `${service.partition} : UA override actif`);
   }
 
+  const allows = (permission) => {
+    if (permission === 'notifications' && isMuted(service.id)) return false;
+    return ALLOWED_PERMISSIONS.has(permission);
+  };
+
   ses.setPermissionRequestHandler((_wc, permission, callback) => {
-    const granted = ALLOWED_PERMISSIONS.has(permission);
+    const granted = allows(permission);
     log('permission', `${service.id} demande "${permission}" -> ${granted ? 'OK' : 'refuse'}`);
     callback(granted);
   });
 
   // Repond a Notification.permission / navigator.permissions.query() sans prompt.
-  ses.setPermissionCheckHandler((_wc, permission) => ALLOWED_PERMISSIONS.has(permission));
+  ses.setPermissionCheckHandler((_wc, permission) => allows(permission));
 
   return ses;
 }
@@ -403,6 +414,62 @@ async function fetchFavicon(entry, urls) {
 }
 
 // ---------------------------------------------------------------------------
+// Coupure des notifications, service par service
+//
+// Refuser la permission ne suffit pas : les sites l'ont deja obtenue et en
+// gardent l'etat en cache. On enveloppe donc window.Notification dans la page
+// elle-meme. executeJavaScript s'execute dans le monde principal — contrairement
+// a un preload qui, avec contextIsolation, ne pourrait pas toucher au
+// window du site.
+//
+// Le wrapper n'est pose qu'une fois ; ensuite seul le drapeau bascule, ce qui
+// rend le mute/unmute instantane, sans rechargement.
+// ---------------------------------------------------------------------------
+
+const notificationPatch = (muted) => `(() => {
+  const Native = window.__nexusNativeNotification || window.Notification;
+  if (!Native) return 'sans-Notification';
+
+  window.__nexusNativeNotification = Native;
+  window.__nexusMuted = ${muted};
+
+  if (!window.__nexusPatched) {
+    const Patched = function (title, options) {
+      if (window.__nexusMuted) {
+        // Objet inerte : les sites branchent onclick/onclose dessus juste apres.
+        return { title, body: (options || {}).body, close() {},
+                 addEventListener() {}, removeEventListener() {} };
+      }
+      return new Native(title, options);
+    };
+
+    Patched.requestPermission = (...args) => Native.requestPermission(...args);
+    Object.defineProperty(Patched, 'permission', { get: () => Native.permission });
+    window.Notification = Patched;
+    window.__nexusPatched = true;
+  }
+
+  return window.__nexusMuted ? 'coupe' : 'actif';
+})()`;
+
+function applyMuteState(entry) {
+  const muted = isMuted(entry.service.id);
+
+  entry.view.webContents
+    .executeJavaScript(notificationPatch(muted), true)
+    .then((state) => log('mute', `${entry.service.id} : notifications ${state}`))
+    .catch((err) => log('mute', `${entry.service.id} : patch impossible (${err.message})`));
+}
+
+function setMuted(id, muted) {
+  store.set('muted', { ...store.get('muted'), [id]: muted });
+
+  const entry = views.get(id);
+  if (entry) applyMuteState(entry);
+  else log('mute', `${id} : ${muted ? 'coupe' : 'actif'} (service pas encore charge)`);
+}
+
+// ---------------------------------------------------------------------------
 // Vues de service (WebContentsView, remplacant de BrowserView depuis Electron 30)
 // ---------------------------------------------------------------------------
 
@@ -453,6 +520,10 @@ function createServiceView(service) {
   // Les raccourcis doivent marcher quand le focus est dans le service (cas
   // normal) et pas seulement dans la sidebar.
   wc.on('before-input-event', handleShortcut);
+
+  // dom-ready plutot que did-finish-load : on veut envelopper Notification avant
+  // que le site n'en garde une reference.
+  wc.on('dom-ready', () => applyMuteState(entry));
 
   wc.on('did-finish-load', () => setStatus(entry, 'ready'));
 
@@ -821,6 +892,15 @@ function createWindow() {
     let delay = PRELOAD_STAGGER_MS;
     for (const service of services) {
       if (service.id === startId) continue;
+
+      // `preload: false` dans services.js : service charge seulement au premier
+      // clic. Il economise un process Chromium, mais ne remonte ni badge ni
+      // notification tant qu'il n'a pas ete ouvert au moins une fois.
+      if (service.preload === false) {
+        log('preload', `${service.id} ignore (preload: false)`);
+        continue;
+      }
+
       setTimeout(() => {
         if (!mainWindow || mainWindow.isDestroyed() || views.has(service.id)) return;
         log('preload', service.id);
@@ -888,6 +968,8 @@ ipcMain.handle('hub:bootstrap', () => ({
     ...resolveIcon(service),
   })),
   activeId,
+  // Base servant a composer l'icone du tray avec le compteur par-dessus.
+  trayBase: nativeImage.createFromPath(ICON_PATH).resize({ width: 64, height: 64 }).toDataURL(),
 }));
 
 /** Enregistre un nouvel ordre complet (drag & drop cote sidebar). */
@@ -933,6 +1015,13 @@ ipcMain.on('hub:service-menu', (_e, id) => {
   const menu = Menu.buildFromTemplate([
     { label: service.name, enabled: false },
     { type: 'separator' },
+    {
+      label: 'Notifications',
+      type: 'checkbox',
+      checked: !isMuted(id),
+      click: (item) => setMuted(id, !item.checked),
+    },
+    { type: 'separator' },
     { label: "Changer l'icone...", click: () => chooseIcon(id) },
     { label: 'Icone par defaut', enabled: Boolean(storedIcon(id)), click: () => resetIcon(id) },
     { type: 'separator' },
@@ -952,6 +1041,15 @@ ipcMain.on('hub:service-menu', (_e, id) => {
   ]);
 
   menu.popup({ window: mainWindow });
+});
+
+// Icone du tray redessinee avec le compteur incruste (composee au canvas cote
+// renderer). Sans compteur, on remet le fichier d'origine.
+ipcMain.on('hub:tray-icon', (_e, dataUrl) => {
+  if (!tray) return;
+  tray.setImage(
+    dataUrl ? nativeImage.createFromDataURL(dataUrl) : nativeImage.createFromPath(ICON_PATH)
+  );
 });
 
 // Compteur de non-lus sur l'icone de la barre des taches Windows.

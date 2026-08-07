@@ -205,7 +205,7 @@ function setBadge(id, count) {
   badge.textContent = count > 0 ? (count > 99 ? '99+' : String(count)) : '';
   item.el.classList.toggle('has-badge', count !== 0);
 
-  updateTaskbarBadge();
+  updateCounters();
 }
 
 // ---------------------------------------------------------------------------
@@ -244,7 +244,54 @@ function drawOverlayBadge(total, dotOnly) {
   return overlayCanvas.toDataURL('image/png');
 }
 
-function updateTaskbarBadge() {
+// ---------------------------------------------------------------------------
+// Icone du tray, recomposee avec le compteur
+//
+// Quand la fenetre est masquee dans le tray, elle n'a plus de bouton dans la
+// barre des taches — donc plus de pastille. Le tray prend le relais : on
+// redessine son icone avec le compteur incruste.
+// ---------------------------------------------------------------------------
+
+const trayCanvas = document.createElement('canvas');
+trayCanvas.width = 64;
+trayCanvas.height = 64;
+
+const trayBase = new Image();
+let trayBaseReady = false;
+
+trayBase.addEventListener('load', () => {
+  trayBaseReady = true;
+  updateCounters(); // l'image a pu arriver apres le premier badge
+});
+
+function drawTrayIcon(total, dotOnly) {
+  const ctx = trayCanvas.getContext('2d');
+  ctx.clearRect(0, 0, 64, 64);
+  ctx.drawImage(trayBase, 0, 0, 64, 64);
+
+  // L'icone du tray est affichee en 16px : la pastille doit etre grosse et
+  // franche, sinon elle disparait au redimensionnement.
+  const radius = dotOnly ? 13 : 21;
+  ctx.fillStyle = '#e5484d';
+  ctx.beginPath();
+  ctx.arc(64 - radius, 64 - radius, radius, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (!dotOnly) {
+    // Au-dela de 9, le chiffre devient illisible une fois reduit a 16px.
+    const label = total > 9 ? '9+' : String(total);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `700 ${label.length === 1 ? 30 : 24}px "Segoe UI", sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, 64 - radius, 64 - radius + 1);
+  }
+
+  return trayCanvas.toDataURL('image/png');
+}
+
+/** Recalcule le total et met a jour les deux compteurs (taskbar + tray). */
+function updateCounters() {
   let total = 0;
   let dot = false;
 
@@ -255,11 +302,13 @@ function updateTaskbarBadge() {
 
   if (!total && !dot) {
     window.hub.setOverlayBadge(null, '');
+    if (trayBaseReady) window.hub.setTrayIcon(null);
     return;
   }
 
   const description = total > 0 ? `${total} messages non lus` : 'Messages non lus';
   window.hub.setOverlayBadge(drawOverlayBadge(total, total === 0), description);
+  if (trayBaseReady) window.hub.setTrayIcon(drawTrayIcon(total, total === 0));
 }
 
 /**
@@ -292,7 +341,8 @@ overlayRetry.addEventListener('click', () => {
 
 // Bootstrap
 (async () => {
-  const { services, activeId: initialId } = await window.hub.bootstrap();
+  const { services, activeId: initialId, trayBase: trayBaseUrl } = await window.hub.bootstrap();
+  if (trayBaseUrl) trayBase.src = trayBaseUrl;
   renderSidebar(services);
   setActive(initialId || services[0]?.id);
 

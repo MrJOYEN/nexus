@@ -16,6 +16,9 @@
  *   initials  texte affiche quand aucune icone n'est disponible
  *   icon      (optionnel) nom de fichier dans assets/icons/ (PNG/JPG/ICO, 64x64
  *             ou plus) ou chemin absolu. Prioritaire sur la favicon du site.
+ *   preload   (optionnel, defaut true) charger le service des le demarrage.
+ *             `false` economise un process Chromium, mais le service ne remonte
+ *             ni badge ni notification tant qu'il n'a pas ete ouvert une fois.
  *   userAgent (optionnel) force le User-Agent de la partition
  *
  * Ordre de resolution de l'icone : `icon` > favicon du site > initiales.

@@ -33,6 +33,9 @@ contextBridge.exposeInMainWorld('hub', {
   setOverlayBadge: (dataUrl, description) =>
     ipcRenderer.send('hub:overlay', { dataUrl, description }),
 
+  /** Icone du tray recomposee avec le compteur ; null = icone d'origine. */
+  setTrayIcon: (dataUrl) => ipcRenderer.send('hub:tray-icon', dataUrl),
+
   /** { id, status: 'loading' | 'ready' | 'error', message? } */
   onStatus: (callback) => on('hub:status', callback),
 

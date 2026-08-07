@@ -48,6 +48,26 @@ Cas particulier : quand un service signale des non-lus **sans compteur**
 (WhatsApp affiche parfois juste un point), le badge devient une pastille sans
 chiffre.
 
+Quand la fenetre est masquee dans le tray, elle n'a plus de bouton dans la barre
+des taches — donc plus de pastille. L'icone du tray prend alors le relais : elle
+est recomposee avec le compteur incruste (`drawTrayIcon`). Au-dela de 9 elle
+affiche `9+`, un chiffre plus long etant illisible une fois reduit a 16px.
+
+## Couper les notifications d'un service
+
+**Clic droit sur l'icone > _Notifications_** (case a cocher). Instantane, sans
+rechargement, conserve au redemarrage.
+
+Refuser la permission ne suffisait pas : les sites l'ont deja obtenue et en
+gardent l'etat en cache. `window.Notification` est donc enveloppe directement
+dans la page, via `executeJavaScript` — qui s'execute dans le monde principal,
+contrairement a un preload qui, avec `contextIsolation`, ne pourrait pas toucher
+au `window` du site. Le wrapper est pose sur `dom-ready`, avant que le site n'en
+garde une reference ; ensuite seul un drapeau bascule.
+
+Les badges de non-lus continuent de fonctionner sur un service coupe : c'est le
+son et la pop-up Windows qui disparaissent, pas le comptage.
+
 ## Tray & fermeture
 
 - **Clic gauche** sur l'icone : affiche / masque la fenetre.
@@ -62,6 +82,15 @@ Le dernier service actif est restaure, puis les 5 autres sont charges en
 arriere-plan espaces de 1,5 s. C'est volontaire : sans ce prechargement, un service
 jamais ouvert n'emettrait ni badge ni notification. `backgroundThrottling: false`
 empeche Chromium de mettre en veille les WebSocket des vues masquees.
+
+Chaque service preche coute un process Chromium. Pour ceux dont tu n'attends
+aucune notification en arriere-plan (Google Agenda, typiquement), ajouter
+`preload: false` dans `services.js` : ils ne se chargent qu'au premier clic.
+
+Une vraie mise en veille des services inactifs n'aurait pas de sens ici : elle
+reviendrait a desactiver ce pour quoi l'app existe. `preload: false` est le seul
+arbitrage honnete entre memoire et notifications — service par service, en
+connaissance de cause.
 
 ## Prerequis
 
@@ -250,6 +279,10 @@ installation via l'installer NSIS, le bon nom apparait.
 - [x] 6. Tray + raccourcis clavier + persistance (electron-store) + close-to-tray
 - [x] 7. Build NSIS (`dist\Nexus-Setup-1.0.0.exe`, 95 Mo) — installation a
       verifier a la main sur le poste cible
+
+Ajoute apres coup : icones personnalisables (clic droit), compteur sur la barre
+des taches et sur le tray, reordonnancement par glisser-deposer, coupure des
+notifications par service, chargement paresseux optionnel.
 
 ## Note sur electron-store
 
