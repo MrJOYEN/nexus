@@ -449,7 +449,22 @@ const notificationPatch = (muted) => `(() => {
     window.__nexusPatched = true;
   }
 
-  return window.__nexusMuted ? 'coupe' : 'actif';
+  // Deuxieme voie, distincte : un site peut notifier via son service worker
+  // (ServiceWorkerRegistration.showNotification), qui ne touche jamais a
+  // window.Notification. Discord et WhatsApp le font.
+  const swProto = window.ServiceWorkerRegistration && window.ServiceWorkerRegistration.prototype;
+  if (swProto && swProto.showNotification && !window.__nexusSwPatched) {
+    const nativeShow = swProto.showNotification;
+    swProto.showNotification = function (...args) {
+      if (window.__nexusMuted) return Promise.resolve();
+      return nativeShow.apply(this, args);
+    };
+    window.__nexusSwPatched = true;
+  }
+
+  return (window.__nexusMuted ? 'coupe' : 'actif')
+    + ' [permission Chromium: ' + Native.permission
+    + ' | service worker: ' + (window.__nexusSwPatched ? 'enveloppe' : 'absent') + ']';
 })()`;
 
 function applyMuteState(entry) {
@@ -1019,7 +1034,10 @@ ipcMain.on('hub:service-menu', (_e, id) => {
       label: 'Notifications',
       type: 'checkbox',
       checked: !isMuted(id),
-      click: (item) => setMuted(id, !item.checked),
+      // On repart de l'etat stocke, pas de item.checked : selon les plateformes
+      // le handler recoit la valeur d'avant ou d'apres la bascule, ce qui
+      // inversait l'enregistrement.
+      click: () => setMuted(id, !isMuted(id)),
     },
     { type: 'separator' },
     { label: "Changer l'icone...", click: () => chooseIcon(id) },
