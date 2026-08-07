@@ -10,12 +10,23 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <!-- Sidebar : 64px, toujours visible. Le reste de la fenetre est recouvert
-         par la WebContentsView du service actif (gere dans main.js). -->
-    <nav id="sidebar" aria-label="Services"></nav>
+    <!-- Sidebar : toujours visible. Le reste de la fenetre est recouvert par la
+         WebContentsView du service actif (gere dans main.js). -->
+    <nav id="sidebar" aria-label="Services">
+      <div id="services"></div>
 
-    <!-- Zone principale : visible uniquement quand la vue du service est masquee
-         (chargement en erreur / timeout). -->
+      <div id="sidebar-actions">
+        <button id="update-btn" class="action update hidden" type="button" title="Mise a jour">
+          <span aria-hidden="true">↑</span>
+        </button>
+        <button id="add-btn" class="action" type="button" title="Ajouter un service">
+          <span aria-hidden="true">+</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- Zone principale : visible quand la vue du service est masquee — erreur de
+         chargement, service en veille, ou boite de dialogue ouverte. -->
     <main id="content">
       <div id="overlay" class="hidden">
         <div class="overlay-card">
@@ -24,6 +35,70 @@
           <p id="overlay-message"></p>
           <button id="overlay-retry" class="hidden" type="button">Reessayer</button>
         </div>
+      </div>
+
+      <div id="modal" class="hidden">
+        <form id="service-form" autocomplete="off">
+          <h1 id="form-title">Nouveau service</h1>
+
+          <label class="field">
+            <span>Nom</span>
+            <input id="f-name" type="text" maxlength="60" required placeholder="WhatsApp Perso" />
+          </label>
+
+          <label class="field">
+            <span>Adresse</span>
+            <input id="f-url" type="text" required placeholder="https://web.whatsapp.com" />
+          </label>
+
+          <div class="row">
+            <label class="field">
+              <span>Initiales</span>
+              <input id="f-initials" type="text" maxlength="4" placeholder="WP" />
+            </label>
+            <label class="field color">
+              <span>Couleur</span>
+              <input id="f-color" type="color" value="#45475a" />
+            </label>
+          </div>
+
+          <label class="field">
+            <span>Mise en veille automatique</span>
+            <select id="f-hibernate">
+              <option value="0">Jamais</option>
+              <option value="15">Apres 15 minutes</option>
+              <option value="30">Apres 30 minutes</option>
+              <option value="60">Apres 1 heure</option>
+              <option value="180">Apres 3 heures</option>
+            </select>
+            <small>Libere la memoire, mais coupe badges et notifications jusqu'au prochain clic.</small>
+          </label>
+
+          <label class="check">
+            <input id="f-spoof" type="checkbox" />
+            <span>
+              Se faire passer pour Chrome
+              <small>Necessaire pour WhatsApp, qui refuse les navigateurs Electron.</small>
+            </span>
+          </label>
+
+          <label class="check">
+            <input id="f-preload" type="checkbox" checked />
+            <span>
+              Charger au demarrage
+              <small>Sans ca, aucun badge ni notification avant la premiere ouverture.</small>
+            </span>
+          </label>
+
+          <p id="form-error" class="hidden"></p>
+
+          <div class="form-actions">
+            <button id="form-delete" class="danger hidden" type="button">Supprimer</button>
+            <span class="spacer"></span>
+            <button id="form-cancel" type="button">Annuler</button>
+            <button id="form-save" class="primary" type="submit">Enregistrer</button>
+          </div>
+        </form>
       </div>
     </main>
 

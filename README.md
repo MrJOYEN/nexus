@@ -8,7 +8,7 @@ isolee** (3 comptes WhatsApp connectes en meme temps, 2 Discord, 1 Google Calend
 
 | Raccourci        | Action                                                  |
 | ---------------- | ------------------------------------------------------- |
-| `Ctrl+1` … `Ctrl+6` | Basculer sur le service N (ordre de `services.js`)   |
+| `Ctrl+1` … `Ctrl+9` | Basculer sur le service N (ordre de la sidebar)      |
 | `Ctrl+R`         | Recharger le service actif                              |
 | `Ctrl+Shift+R`   | Hard reload : vide le cache de la partition puis recharge |
 | `Ctrl+Shift+I`   | DevTools du service actif                               |
@@ -25,9 +25,9 @@ quand l'app a le focus, et ne volent donc pas `Ctrl+1` au reste du systeme.
 L'ordre est conserve au redemarrage et fait autorite partout : la 3e icone est
 toujours `Ctrl+3`, et le menu du tray suit la meme sequence.
 
-`services.js` ne definit donc que l'ordre **initial**. Un service ajoute plus tard
-apparait a la fin sans perturber ton classement ; un service retire de
-`services.js` disparait de l'ordre stocke sans le casser.
+L'ordre vit dans `config.json`, pas dans le code. Un service cree plus tard
+apparait a la fin sans perturber ton classement ; un service supprime disparait
+de l'ordre stocke sans le casser.
 
 ## Compteurs de non-lus
 
@@ -110,13 +110,10 @@ jamais ouvert n'emettrait ni badge ni notification. `backgroundThrottling: false
 empeche Chromium de mettre en veille les WebSocket des vues masquees.
 
 Chaque service preche coute un process Chromium. Pour ceux dont tu n'attends
-aucune notification en arriere-plan (Google Agenda, typiquement), ajouter
-`preload: false` dans `services.js` : ils ne se chargent qu'au premier clic.
-
-Une vraie mise en veille des services inactifs n'aurait pas de sens ici : elle
-reviendrait a desactiver ce pour quoi l'app existe. `preload: false` est le seul
-arbitrage honnete entre memoire et notifications — service par service, en
-connaissance de cause.
+aucune notification en arriere-plan (Google Agenda, typiquement), decocher
+**Charger au demarrage** dans le formulaire d'edition : ils ne se chargent qu'au
+premier clic. Voir aussi [Mise en veille](#mise-en-veille), qui decharge un
+service deja demarre.
 
 ## Prerequis
 
@@ -142,7 +139,7 @@ c'est normal — "Informations complementaires" > "Executer quand meme".
 ```
 main.js       process principal : fenetre, sessions isolees, WebContentsView, IPC
 preload.js    bridge contextBridge (window.hub) - seule surface exposee au renderer
-services.js   config des services (le seul fichier a editer pour ajouter/retirer)
+services.js   semence : services livres par defaut, copies dans config.json au 1er run
 renderer/     sidebar en HTML/CSS/JS vanilla (= webContents de la BrowserWindow)
 ```
 
@@ -153,24 +150,87 @@ est en erreur, sa vue est masquee : l'ecran "Reessayer" du renderer redevient vi
 **Securite** : `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`
 sur la fenetre principale comme sur chaque vue de service.
 
+## Mises a jour automatiques
+
+L'app packagee interroge les **GitHub Releases** du depot au demarrage puis toutes
+les 4 heures, telecharge en arriere-plan et propose de redemarrer. Rien n'est
+installe sans action de ta part : un bouton apparait en bas de la sidebar et dans
+le menu du tray.
+
+Publier une version :
+
+```bash
+npm version patch          # 1.0.0 -> 1.0.1 (electron-updater compare les versions)
+set GH_TOKEN=<token>       # scope "repo"
+npm run release            # build + publication de la Release GitHub
+```
+
+`npm run build` continue de produire un installeur local sans rien publier.
+
+- Le depot doit etre **public**, sinon electron-updater ne peut pas lire les
+  Releases sans jeton embarque dans l'app.
+- L'app n'est pas signee : electron-updater ne verifie donc pas de signature
+  (`publisherName` n'est pas configure). Ca fonctionne, mais quiconque
+  controlerait le depot pourrait pousser une version — c'est le compromis assume
+  d'une distribution non signee.
+- La mise a jour differentielle s'appuie sur le `.blockmap` genere a cote de
+  l'installeur : il doit accompagner chaque Release.
+
+## Mise en veille
+
+Un service en veille est **detruit** : son process Chromium disparait et la
+memoire est rendue. En contrepartie il ne remonte plus ni badge ni notification
+jusqu'au prochain clic, qui le recharge. C'est le seul arbitrage possible — un
+service qui notifie est un service qui tourne.
+
+Deux voies :
+
+- **manuelle** — clic droit sur l'icone > _Mettre en veille_ ;
+- **automatique** — un delai par service dans le formulaire d'edition (jamais,
+  15 min, 30 min, 1 h, 3 h). Le compte a rebours demarre quand le service passe
+  en arriere-plan et s'annule des qu'on y revient.
+
+Le service affiche n'est jamais endormi, quel que soit le delai : la zone
+principale deviendrait vide.
+
+A ne pas confondre avec `preload: false`, qui repousse seulement le **premier**
+chargement. La veille, elle, decharge un service deja demarre, encore et encore.
+
 ## Ajouter un service
 
-Editer `services.js` et ajouter une entree :
+**Depuis l'app** : bouton `+` en bas de la sidebar. Nom, adresse, initiales,
+couleur, delai de veille, et deux options — se faire passer pour Chrome (requis
+par WhatsApp) et charger au demarrage. Le service obtient sa **propre partition
+de session** des sa creation, donc une session etanche : c'est ce qui permet
+d'ajouter un quatrieme WhatsApp sur un quatrieme numero.
+
+Clic droit sur une icone > _Modifier_ pour rouvrir le formulaire, _Supprimer_
+pour la retirer (avec une case a cocher pour effacer aussi les donnees de session).
+
+`services.js` n'est plus la configuration active : c'est une **semence**, copiee
+dans `config.json` au premier lancement. Le modifier n'a d'effet que sur une
+installation neuve. Pour ajouter un service par le code :
 
 ```js
 {
-  id: 'slack-boulot',                    // unique, sert de cle IPC + persistance
+  id: 'slack-boulot',                // unique, sert de cle IPC et de persistance
   name: 'Slack Boulot',
   url: 'https://app.slack.com/client',
-  partition: 'persist:slack-boulot',     // "persist:" obligatoire pour garder la session
+  partition: 'persist:slack-boulot', // "persist:" obligatoire pour garder la session
   color: '#4A154B',
   initials: 'SB',
-  // userAgent: '...'                    // optionnel, seulement si le service bloque Electron
+  // spoofUserAgent: true,           // seulement si le service refuse Electron
+  // preload: false,                 // charger au premier clic plutot qu'au demarrage
+  // hibernateAfter: 30,             // minutes d'inactivite avant veille (0 = jamais)
 }
 ```
 
-Redemarrer l'app. Rien d'autre a toucher : la sidebar, les raccourcis et le menu
-tray se construisent depuis ce tableau.
+Rien d'autre a toucher : la sidebar, les raccourcis et le menu tray se
+construisent depuis cette liste.
+
+Pour **retirer** un service, utiliser l'app. Ses donnees de session restent sur
+disque dans `%APPDATA%\Nexus\Partitions\<partition>` sauf si tu coches la case
+d'effacement — sinon, a supprimer a la main.
 
 ## Identite visuelle
 
@@ -243,10 +303,6 @@ Deux details qui compliquent ce classement, tous les deux traites dans `main.js`
 
 Les icones transitent en data URI : la CSP du renderer reste en `img-src 'self'
 data:`, aucune requete reseau n'est faite depuis la sidebar.
-
-Pour **retirer** un service, supprimer son entree. Ses donnees restent sur disque
-dans `%APPDATA%\Nexus\Partitions\<partition>` — a supprimer a la main si
-tu veux vraiment repartir de zero.
 
 ## Troubleshooting
 
@@ -354,6 +410,20 @@ installation via l'installer NSIS, le bon nom apparait.
    le confirme au premier chargement.
 3. La fenetre doit rester **masquee, pas quittee** : un service quitte ne notifie plus.
 
+## Tester sans toucher a l'installation
+
+Version de dev et version installee partagent `%APPDATA%\Nexus` : le verrou
+d'instance unique empeche donc de lancer les deux, et un test en dev touche tes
+vraies sessions. Pour travailler sur un profil jetable :
+
+```bash
+npx electron . --user-data-dir="%TEMP%\nexus-test"
+```
+
+Profil vide, verrou distinct, sessions reelles intactes. C'est aussi la seule
+facon de verifier un comportement de premier lancement (la semence des services,
+par exemple) sans repartir de zero sur ta vraie configuration.
+
 ## Feuille de route
 
 - [x] 1. Scaffolding + `package.json`
@@ -367,7 +437,9 @@ installation via l'installer NSIS, le bon nom apparait.
 
 Ajoute apres coup : icones personnalisables (clic droit), compteur sur la barre
 des taches et sur le tray, reordonnancement par glisser-deposer, coupure des
-notifications par service, chargement paresseux optionnel.
+notifications par service, chargement paresseux, **creation et edition de
+services depuis l'app**, **mise en veille manuelle et automatique**, **mises a
+jour automatiques via GitHub Releases**.
 
 ## Note sur electron-store
 

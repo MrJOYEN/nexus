@@ -14,10 +14,12 @@
     "start": "electron .",
     "dev": "electron . --dev",
     "pack": "electron-builder --dir",
-    "build": "electron-builder --win"
+    "build": "electron-builder --win",
+    "release": "electron-builder --win --publish always"
   },
   "dependencies": {
-    "electron-store": "8.2.0"
+    "electron-store": "8.2.0",
+    "electron-updater": "^6.8.9"
   },
   "devDependencies": {
     "electron": "^43.3.0",
@@ -59,6 +61,12 @@
       "shortcutName": "Nexus"
     },
     "artifactName": "${productName}-Setup-${version}.${ext}",
-    "publish": null
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "MrJOYEN",
+        "repo": "nexus"
+      }
+    ]
   }
 }

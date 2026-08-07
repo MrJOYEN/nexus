@@ -1,39 +1,43 @@
 'use strict';
 
 /**
- * Configuration des services.
- * Pour ajouter/retirer un service : editer ce tableau, c'est tout.
+ * Services livres par defaut.
+ *
+ * Ce fichier n'est plus la configuration active : il sert de **semence**. Au
+ * premier lancement, cette liste est copiee dans le store (config.json), qui
+ * devient la seule source de verite. Tout est ensuite modifiable depuis l'app —
+ * ajout, edition, suppression, reordonnancement — sans toucher au code.
+ *
+ * Modifier ce fichier n'a donc d'effet que sur une installation neuve, ou apres
+ * "Reinitialiser les services" dans l'app.
  *
  * Champs :
- *   id        identifiant unique (sert de cle pour la persistance et les IPC)
- *   name      libelle affiche (tooltip sidebar + menu tray)
- *   url       URL de demarrage
- *   partition partition de session Electron -> DOIT commencer par "persist:" pour
- *             que cookies / localStorage / IndexedDB survivent au redemarrage.
- *             Deux services avec des partitions differentes = deux navigateurs
- *             totalement etanches (3 WhatsApp sur 3 numeros en meme temps).
- *   color     couleur de la pastille d'initiales et du badge
- *   initials  texte affiche quand aucune icone n'est disponible
- *   icon      (optionnel) nom de fichier dans assets/icons/ (PNG/JPG/ICO, 64x64
- *             ou plus) ou chemin absolu. Prioritaire sur la favicon du site.
- *   preload   (optionnel, defaut true) charger le service des le demarrage.
- *             `false` economise un process Chromium, mais le service ne remonte
- *             ni badge ni notification tant qu'il n'a pas ete ouvert une fois.
- *   userAgent (optionnel) force le User-Agent de la partition
- *
- * Ordre de resolution de l'icone : `icon` > favicon du site > initiales.
- * Les 3 WhatsApp ayant la meme favicon, une pastille d'initiales reste affichee
- * par-dessus l'icone pour les distinguer.
+ *   id             identifiant unique, cle des IPC et de la persistance
+ *   name           libelle affiche (infobulle sidebar, menu tray)
+ *   url            URL de demarrage
+ *   partition      partition de session Electron -> DOIT commencer par "persist:"
+ *                  pour que cookies / localStorage / IndexedDB survivent au
+ *                  redemarrage. Deux partitions differentes = deux navigateurs
+ *                  etanches (3 WhatsApp sur 3 numeros en meme temps).
+ *   color          couleur de la pastille d'initiales et du badge
+ *   initials       texte affiche quand aucune icone n'est disponible
+ *   icon           (optionnel) fichier dans assets/icons/ ou chemin absolu
+ *   spoofUserAgent (optionnel) se faire passer pour Chrome — voir CHROME_UA
+ *   preload        (defaut true) charger des le demarrage. `false` economise un
+ *                  process, mais aucun badge ni notification avant la premiere
+ *                  ouverture
+ *   hibernateAfter (defaut 0) minutes d'inactivite avant mise en veille
+ *                  automatique. 0 = jamais. Un service en veille ne consomme
+ *                  plus rien, mais ne notifie plus non plus.
  */
 
 // WhatsApp Web refuse les User-Agent contenant "Electron" (page "navigateur non
-// supporte" / "mettez a jour votre navigateur"). On se fait passer pour un
-// Chrome desktop standard sur les 3 partitions WhatsApp.
-// Discord et Google Calendar fonctionnent avec l'UA Electron par defaut.
-const WHATSAPP_UA =
+// supporte"). Les services qui le demandent se font passer pour un Chrome
+// desktop standard. Discord et Google Agenda n'en ont pas besoin.
+const CHROME_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
 
-const SERVICES = [
+const DEFAULT_SERVICES = [
   {
     id: 'wa-redlife',
     name: 'WhatsApp Red Life',
@@ -41,7 +45,7 @@ const SERVICES = [
     partition: 'persist:wa-redlife',
     color: '#25D366',
     initials: 'RL',
-    userAgent: WHATSAPP_UA,
+    spoofUserAgent: true,
   },
   {
     id: 'wa-certiflash',
@@ -50,7 +54,7 @@ const SERVICES = [
     partition: 'persist:wa-certiflash',
     color: '#25D366',
     initials: 'CF',
-    userAgent: WHATSAPP_UA,
+    spoofUserAgent: true,
   },
   {
     id: 'wa-alphadigital',
@@ -59,7 +63,7 @@ const SERVICES = [
     partition: 'persist:wa-alphadigital',
     color: '#25D366',
     initials: 'AD',
-    userAgent: WHATSAPP_UA,
+    spoofUserAgent: true,
   },
   {
     id: 'discord-perso',
@@ -87,4 +91,12 @@ const SERVICES = [
   },
 ];
 
-module.exports = { SERVICES, WHATSAPP_UA };
+/** Valeurs par defaut appliquees a tout service, d'ou qu'il vienne. */
+const SERVICE_DEFAULTS = {
+  icon: null,
+  spoofUserAgent: false,
+  preload: true,
+  hibernateAfter: 0,
+};
+
+module.exports = { DEFAULT_SERVICES, SERVICE_DEFAULTS, CHROME_UA };

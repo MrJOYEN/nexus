@@ -4,6 +4,7 @@
   --avatar-size: 48px;
   --sidebar-bg: #1e1e2e;
   --content-bg: #181825;
+  --surface: #232336;
   --divider: #45475a;
   --accent: #89b4fa;
   --text: #cdd6f4;
@@ -32,6 +33,10 @@ body {
   display: flex;
 }
 
+.hidden {
+  display: none !important;
+}
+
 /* --------------------------------------------------------------- sidebar -- */
 
 #sidebar {
@@ -46,14 +51,32 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
   padding: 10px 0;
+  overflow: hidden;
+}
+
+#services {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
   overflow-y: auto;
   scrollbar-width: none;
 }
 
-#sidebar::-webkit-scrollbar {
+#services::-webkit-scrollbar {
   display: none;
+}
+
+#sidebar-actions {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding-top: 8px;
 }
 
 .service {
@@ -104,15 +127,14 @@ body {
   color: #fff;
   background: var(--service-color, #45475a);
   opacity: 0.8;
-  transition: opacity 140ms ease, transform 140ms ease;
+  transition: opacity 140ms ease, transform 140ms ease, filter 140ms ease;
   overflow: hidden;
 }
 
 /* Avec une icone : aucun fond, aucun cadre, aucune marge. L'image occupe tout
    l'avatar — c'est l'icone du service qui donne sa forme, pas un conteneur.
-   Le rayon de 14px se contente d'adoucir les icones carrees (Discord, Google) ;
-   les icones deja rondes (WhatsApp) ne le voient pas, leurs angles etant
-   transparents. */
+   Le rayon de 14px se contente d'adoucir les icones carrees ; les icones deja
+   rondes ne le voient pas, leurs angles etant transparents. */
 .service.has-icon .avatar {
   background: none;
   border-radius: 14px;
@@ -137,16 +159,6 @@ body {
   transform: scale(0.92);
 }
 
-/* Glisser-deposer : l'icone tiree s'efface, sa place suit le curseur */
-.service.dragging {
-  opacity: 0.35;
-}
-
-.service.dragging::before,
-.service.dragging::after {
-  opacity: 0;
-}
-
 /* Etat de chargement : pastille pulsante */
 .service.loading .avatar {
   animation: pulse 1.2s ease-in-out infinite;
@@ -160,6 +172,25 @@ body {
 
 .service.error .avatar {
   box-shadow: 0 0 0 2px var(--badge);
+}
+
+/* En veille : le service est decharge, l'icone le montre */
+.service.asleep .avatar {
+  filter: grayscale(1);
+  opacity: 0.4;
+}
+
+.service.asleep:hover .avatar {
+  opacity: 0.7;
+}
+
+/* Glisser-deposer : l'icone tiree s'efface, sa place suit le curseur */
+.service.dragging {
+  opacity: 0.35;
+}
+
+.service.dragging::before {
+  opacity: 0;
 }
 
 /* Badge de notifications non lues */
@@ -185,7 +216,7 @@ body {
   display: block;
 }
 
-/* Non-lus sans compteur (WhatsApp affiche parfois juste un point) */
+/* Non-lus sans compteur (Discord affiche parfois juste un point) */
 .badge.dot {
   min-width: 12px;
   width: 12px;
@@ -196,8 +227,7 @@ body {
 }
 
 /* Pastille d'initiales : uniquement sur les icones automatiques (favicon), la
-   ou deux services peuvent etre indiscernables — les 3 WhatsApp. Des qu'une
-   icone est choisie a la main, elle disparait. */
+   ou deux services peuvent etre indiscernables. */
 .chip {
   position: absolute;
   bottom: 1px;
@@ -218,28 +248,45 @@ body {
   display: block;
 }
 
-/* Tooltip maison (pas de title= natif : trop lent a apparaitre) */
-.service::after {
-  content: attr(data-name);
-  position: absolute;
-  left: calc(100% + 6px);
-  top: 50%;
-  transform: translateY(-50%);
-  padding: 5px 9px;
-  border-radius: 6px;
-  background: #11111b;
-  color: var(--text);
-  font-size: 12px;
-  white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 120ms ease;
-  z-index: 10;
+/* Boutons du bas : ajouter un service, installer une mise a jour */
+.action {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border: 1px dashed var(--divider);
+  border-radius: 12px;
+  background: none;
+  color: var(--text-dim);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 140ms ease, border-color 140ms ease, background 140ms ease;
 }
 
-.service:hover::after {
-  opacity: 1;
+.action:hover {
+  color: var(--text);
+  border-color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.04);
 }
+
+.action.update {
+  border-style: solid;
+  border-color: transparent;
+  background: var(--accent);
+  color: #11111b;
+  font-weight: 700;
+}
+
+.action.update:hover {
+  filter: brightness(1.1);
+  background: var(--accent);
+}
+
+/* Les infobulles sont natives (attribut title, pose dans sidebar.js).
+   Un tooltip HTML ne fonctionnerait pas ici : la WebContentsView du service est
+   une couche native posee AU-DESSUS de la page, donc rien de ce que dessine la
+   sidebar ne peut deborder par-dessus. Il resterait tronque a 68px. */
 
 /* --------------------------------------------------------------- content -- */
 
@@ -250,7 +297,8 @@ body {
   background: var(--content-bg);
 }
 
-#overlay {
+#overlay,
+#modal {
   position: absolute;
   inset: 0;
   display: flex;
@@ -258,9 +306,11 @@ body {
   justify-content: center;
 }
 
-#overlay.hidden,
-#overlay-retry.hidden {
-  display: none;
+#modal {
+  background: var(--content-bg);
+  overflow-y: auto;
+  padding: 24px;
+  z-index: 5;
 }
 
 .overlay-card {
@@ -309,4 +359,161 @@ body {
 
 #overlay-retry:hover {
   filter: brightness(1.1);
+}
+
+/* ----------------------------------------------------- formulaire service -- */
+
+#service-form {
+  width: 100%;
+  max-width: 460px;
+  background: var(--surface);
+  border: 1px solid var(--divider);
+  border-radius: 12px;
+  padding: 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+#service-form h1 {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.field > span {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.field small,
+.check small {
+  display: block;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.45;
+  font-weight: 400;
+}
+
+input[type="text"],
+select {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--divider);
+  border-radius: 6px;
+  background: var(--content-bg);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  user-select: text;
+  cursor: text;
+}
+
+select {
+  cursor: pointer;
+}
+
+input[type="text"]:focus,
+select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.row {
+  display: flex;
+  gap: 12px;
+}
+
+.row .field {
+  flex: 1;
+}
+
+.field.color {
+  max-width: 90px;
+}
+
+input[type="color"] {
+  width: 100%;
+  height: 35px;
+  padding: 2px;
+  border: 1px solid var(--divider);
+  border-radius: 6px;
+  background: var(--content-bg);
+  cursor: pointer;
+}
+
+.check {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.check input {
+  margin-top: 2px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+#form-error {
+  padding: 9px 11px;
+  border-radius: 6px;
+  background: rgba(229, 72, 77, 0.12);
+  color: #f38ba8;
+  font-size: 12px;
+}
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.form-actions .spacer {
+  flex: 1;
+}
+
+.form-actions button {
+  padding: 9px 18px;
+  border: 1px solid var(--divider);
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.form-actions button:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.form-actions .primary {
+  border-color: transparent;
+  background: var(--accent);
+  color: #11111b;
+}
+
+.form-actions .primary:hover {
+  filter: brightness(1.1);
+  background: var(--accent);
+}
+
+.form-actions .danger {
+  border-color: transparent;
+  color: #f38ba8;
+}
+
+.form-actions .danger:hover {
+  background: rgba(229, 72, 77, 0.12);
 }

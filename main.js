@@ -14,11 +14,13 @@ const {
   nativeImage,
 } = require('electron');
 const Store = require('electron-store');
-const { SERVICES } = require('./services');
+const { autoUpdater } = require('electron-updater');
+const { DEFAULT_SERVICES, SERVICE_DEFAULTS, CHROME_UA } = require('./services');
 
 const SIDEBAR_WIDTH = 68; // doit rester synchro avec --sidebar-width dans renderer/style.css
 const LOAD_TIMEOUT_MS = 15000; // au-dela, on affiche le bouton "Reessayer"
 const PRELOAD_STAGGER_MS = 1500; // delai entre les chargements des services en arriere-plan
+const UPDATE_INTERVAL_MS = 4 * 60 * 60 * 1000;
 const ICON_PATH = path.join(__dirname, 'assets', 'icon.ico');
 const ICONS_DIR = path.join(__dirname, 'assets', 'icons');
 
@@ -28,19 +30,26 @@ function log(scope, ...args) {
   console.log(`[${new Date().toTimeString().slice(0, 8)}] [${scope}]`, ...args);
 }
 
-/** id -> { service, view, status, message, timer, badge } */
+/** id -> { service, view, status, message, timer, hibernateTimer, badge, iconScore } */
 const views = new Map();
+/** Services volontairement dechargés : connus, configures, mais sans process. */
+const hibernated = new Set();
+
 let mainWindow = null;
 let tray = null;
 let activeId = null;
 let isQuitting = false;
+let pendingUpdate = null; // version telechargee, en attente de redemarrage
 
-// Persistance : geometrie de la fenetre + dernier service actif.
-// electron-store ecrit dans %APPDATA%\Nexus\config.json
+// Persistance : electron-store ecrit dans %APPDATA%\Nexus\config.json
 const store = new Store({
   defaults: {
     window: { width: 1400, height: 900, x: undefined, y: undefined, maximized: false },
     lastActiveId: null,
+    // La liste des services vit ici, pas dans services.js (qui n'est qu'une
+    // semence). C'est ce qui permet de les creer et de les editer depuis l'app.
+    services: [],
+    servicesSeeded: false,
     // id -> data URI : icones choisies par l'utilisateur (clic droit sur l'icone).
     icons: {},
     // Ordre d'affichage choisi par l'utilisateur (drag & drop dans la sidebar).
@@ -50,29 +59,74 @@ const store = new Store({
   },
 });
 
-function isMuted(id) {
-  return Boolean(store.get('muted')?.[id]);
+// ---------------------------------------------------------------------------
+// Catalogue de services
+// ---------------------------------------------------------------------------
+
+/** Complete un service stocke avec les valeurs par defaut. */
+function withDefaults(service) {
+  return { ...SERVICE_DEFAULTS, ...service };
 }
 
 /**
- * Services dans l'ordre d'affichage : celui stocke, complete par services.js.
- * Cet ordre fait autorite partout — sidebar, raccourcis Ctrl+1..6, menu tray —
- * pour que la 3e icone soit toujours Ctrl+3.
- * Les ids inconnus (service retire de services.js) sont ignores, les nouveaux
- * services arrivent a la fin sans casser l'ordre existant.
+ * Premier lancement : on copie services.js dans le store, qui devient la seule
+ * source de verite. Le drapeau evite qu'un service supprime par l'utilisateur
+ * ne reapparaisse au redemarrage suivant.
+ */
+function seedServices() {
+  if (store.get('servicesSeeded')) return;
+  store.set('services', DEFAULT_SERVICES);
+  store.set('servicesSeeded', true);
+  log('services', `semence initiale : ${DEFAULT_SERVICES.length} services depuis services.js`);
+}
+
+function allServices() {
+  return (store.get('services') || []).map(withDefaults);
+}
+
+function getService(id) {
+  return allServices().find((service) => service.id === id) || null;
+}
+
+/** User-Agent effectif : Chrome maquille, ou celui d'Electron par defaut. */
+function userAgentFor(service) {
+  return service?.spoofUserAgent ? CHROME_UA : undefined;
+}
+
+/**
+ * Services dans l'ordre d'affichage. Cet ordre fait autorite partout — sidebar,
+ * raccourcis Ctrl+1..9, menu tray — pour que la 3e icone soit toujours Ctrl+3.
+ * Les ids inconnus sont ignores, les services non classes arrivent a la fin.
  */
 function orderedServices() {
+  const services = allServices();
   const stored = store.get('order') || [];
-  const byId = new Map(SERVICES.map((service) => [service.id, service]));
+  const byId = new Map(services.map((service) => [service.id, service]));
 
   const ordered = stored.map((id) => byId.get(id)).filter(Boolean);
   const seen = new Set(ordered.map((service) => service.id));
 
-  for (const service of SERVICES) {
+  for (const service of services) {
     if (!seen.has(service.id)) ordered.push(service);
   }
 
   return ordered;
+}
+
+function isMuted(id) {
+  return Boolean(store.get('muted')?.[id]);
+}
+
+function slugify(text) {
+  return (
+    (text || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '') // diacritiques laissees par NFD
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 32) || 'service'
+  );
 }
 
 // Identite Windows de l'app : elle determine le nom affiche par le Action Center
@@ -113,6 +167,10 @@ const ALLOWED_PERMISSIONS = new Set([
   'fullscreen',
   'background-sync',
   'display-capture', // partage d'ecran Discord
+  // Sans elle, Chromium s'autorise a evincer l'IndexedDB du site sous pression
+  // disque — donc a deconnecter un compte. WhatsApp la demande a chaque
+  // chargement, et l'etancheite des sessions est la raison d'etre de l'app.
+  'persistent-storage',
 ]);
 
 /**
@@ -124,39 +182,40 @@ const ALLOWED_PERMISSIONS = new Set([
 function getServiceSession(service) {
   const ses = session.fromPartition(service.partition);
 
-  // Une seule configuration par partition (les 6 services ont 6 partitions
-  // distinctes, mais la fonction est appelee a chaque creation de vue).
   if (configuredPartitions.has(service.partition)) return ses;
   configuredPartitions.add(service.partition);
 
-  if (service.userAgent) {
-    ses.webRequest.onBeforeSendHeaders((details, callback) => {
-      const headers = details.requestHeaders;
-      headers['User-Agent'] = service.userAgent;
+  const id = service.id;
 
-      // Les Client Hints (sec-ch-ua*) trahissent Electron meme quand l'UA string
-      // est maquillee. On les supprime : un navigateur non-Chromium n'en envoie
-      // pas, donc WhatsApp retombe sur l'analyse de l'User-Agent.
-      for (const key of Object.keys(headers)) {
-        if (key.toLowerCase().startsWith('sec-ch-ua')) delete headers[key];
-      }
+  // Les handlers relisent le service dans le store a chaque appel : ses reglages
+  // sont editables a chaud, une closure figee les rendrait obsoletes.
+  ses.webRequest.onBeforeSendHeaders((details, callback) => {
+    const ua = userAgentFor(getService(id));
+    if (!ua) return callback({ requestHeaders: details.requestHeaders });
 
-      callback({ requestHeaders: headers });
-    });
+    const headers = details.requestHeaders;
+    headers['User-Agent'] = ua;
 
-    // Cote renderer : aligne navigator.userAgent sur l'en-tete HTTP.
-    ses.setUserAgent(service.userAgent);
-    log('session', `${service.partition} : UA override actif`);
-  }
+    // Les Client Hints (sec-ch-ua*) trahissent Electron meme quand l'UA string
+    // est maquillee. On les supprime : un navigateur non-Chromium n'en envoie
+    // pas, donc WhatsApp retombe sur l'analyse de l'User-Agent.
+    for (const key of Object.keys(headers)) {
+      if (key.toLowerCase().startsWith('sec-ch-ua')) delete headers[key];
+    }
+
+    callback({ requestHeaders: headers });
+  });
+
+  applySessionUserAgent(service);
 
   const allows = (permission) => {
-    if (permission === 'notifications' && isMuted(service.id)) return false;
+    if (permission === 'notifications' && isMuted(id)) return false;
     return ALLOWED_PERMISSIONS.has(permission);
   };
 
   ses.setPermissionRequestHandler((_wc, permission, callback) => {
     const granted = allows(permission);
-    log('permission', `${service.id} demande "${permission}" -> ${granted ? 'OK' : 'refuse'}`);
+    log('permission', `${id} demande "${permission}" -> ${granted ? 'OK' : 'refuse'}`);
     callback(granted);
   });
 
@@ -166,12 +225,20 @@ function getServiceSession(service) {
   return ses;
 }
 
+/** Aligne navigator.userAgent sur l'en-tete HTTP (a rejouer apres edition). */
+function applySessionUserAgent(service) {
+  const ua = userAgentFor(service);
+  if (!ua) return;
+  session.fromPartition(service.partition).setUserAgent(ua);
+  log('session', `${service.partition} : UA override actif`);
+}
+
 // ---------------------------------------------------------------------------
 // Icones de service
 //
 // Priorite : 1) icone choisie dans l'app (clic droit > Changer l'icone),
 //               persistee en data URI dans electron-store
-//            2) fichier local declare via `icon` dans services.js
+//            2) fichier local declare via `icon`
 //            3) favicon du site, recuperee automatiquement
 //            4) initiales colorees (fallback)
 // Le renderer a une CSP stricte (img-src 'self' data:) : on lui envoie donc des
@@ -206,11 +273,11 @@ function resolveIcon(service) {
 
 /**
  * Ouvre un selecteur de fichier et enregistre l'image choisie comme icone du
- * service. On stocke une data URI 64x64 plutot qu'un chemin : l'icone survit au
+ * service. On stocke une data URI plutot qu'un chemin : l'icone survit au
  * deplacement ou a la suppression du fichier source.
  */
 async function chooseIcon(id) {
-  const service = SERVICES.find((s) => s.id === id);
+  const service = getService(id);
   if (!service) return;
 
   const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
@@ -240,13 +307,15 @@ async function chooseIcon(id) {
   send('hub:icon', { id, dataUrl, source: 'user' });
 }
 
-/** Supprime l'icone choisie : on retombe sur services.js, puis la favicon. */
+/** Supprime l'icone choisie : on retombe sur le fichier declare, puis la favicon. */
 function resetIcon(id) {
   const icons = { ...store.get('icons') };
   delete icons[id];
   store.set('icons', icons);
 
-  const service = SERVICES.find((s) => s.id === id);
+  const service = getService(id);
+  if (!service) return;
+
   const { dataUrl, source } = resolveIcon(service);
   log('icon', `${id} : icone personnalisee retiree -> ${source || 'initiales'}`);
   send('hub:icon', { id, dataUrl, source });
@@ -264,8 +333,7 @@ function loadCustomIcon(service) {
     return null;
   }
 
-  log('icon', `${service.id} : icone locale ${path.basename(file)}`);
-  return image.resize({ width: 64, height: 64 }).toDataURL();
+  return image.resize({ width: 128, height: 128, quality: 'best' }).toDataURL();
 }
 
 // Score attribue aux icones vectorielles : elles restent nettes a n'importe
@@ -274,9 +342,8 @@ const SVG_SCORE = 4096;
 
 /**
  * Determine le vrai format a partir des octets. Les serveurs mentent ou se
- * taisent : web.whatsapp.com sert un .ico sans content-type exploitable, ce qui
- * le rendait indecodable ET non identifiable. Les nombres magiques, eux, ne
- * mentent pas.
+ * taisent : web.whatsapp.com sert sa favicon en WebP sans content-type
+ * exploitable. Les nombres magiques, eux, ne mentent pas.
  */
 function sniffMime(buffer, fallback) {
   if (buffer.length >= 4) {
@@ -295,12 +362,6 @@ function sniffMime(buffer, fallback) {
   return fallback;
 }
 
-/**
- * Score de qualite d'une icone = sa largeur en pixels.
- * getSize() renvoie 0 pour ce que nativeImage ne decode pas (SVG notamment) :
- * le SVG est traite a part, le reste retombe a 0 et perd face a tout bitmap
- * mesurable.
- */
 /**
  * Largeur d'un WebP, lue dans son en-tete. nativeImage ne decode pas ce format
  * (Chromium si, l'icone s'affiche donc normalement) et web.whatsapp.com sert sa
@@ -322,6 +383,7 @@ function webpWidth(buffer) {
   }
 }
 
+/** Score de qualite d'une icone = sa largeur en pixels. */
 function iconWidth(candidate) {
   if (/svg/i.test(candidate.mime)) return SVG_SCORE;
   if (/webp/i.test(candidate.mime)) return webpWidth(candidate.buffer);
@@ -363,6 +425,7 @@ async function fetchFavicon(entry, urls) {
   // en cache (elle servira si l'utilisateur fait "Icone par defaut") mais on ne
   // l'affiche pas.
   const overridden = Boolean(storedIcon(service.id) || service.icon);
+
   // Les sites emettent page-favicon-updated plusieurs fois par chargement, et
   // pas forcement du meilleur au pire : Discord annonce d'abord son icone
   // vectorielle, puis une version canvas de 16px avec son compteur incruste. On
@@ -385,9 +448,8 @@ async function fetchFavicon(entry, urls) {
   try {
     // Un site declare souvent plusieurs icones : plusieurs tailles (16, 32,
     // 192...) et parfois une favicon dynamique en data URI, dessinee au canvas
-    // pour y incruster son compteur de non-lus (Discord le fait). Cette
-    // derniere est minuscule. L'avatar faisant 48px, on recupere TOUTES les
-    // candidates et on garde la plus definie.
+    // pour y incruster son compteur de non-lus. L'avatar faisant 48px, on
+    // recupere TOUTES les candidates et on garde la plus definie.
     const downloads = await Promise.all(
       candidates.map(async (candidate) => {
         if (candidate.startsWith('data:')) return decodeDataUrl(candidate);
@@ -428,8 +490,8 @@ async function fetchFavicon(entry, urls) {
 // Refuser la permission ne suffit pas : les sites l'ont deja obtenue et en
 // gardent l'etat en cache. On enveloppe donc window.Notification dans la page
 // elle-meme. executeJavaScript s'execute dans le monde principal — contrairement
-// a un preload qui, avec contextIsolation, ne pourrait pas toucher au
-// window du site.
+// a un preload qui, avec contextIsolation, ne pourrait pas toucher au window du
+// site.
 //
 // Le wrapper n'est pose qu'une fois ; ensuite seul le drapeau bascule, ce qui
 // rend le mute/unmute instantane, sans rechargement.
@@ -488,7 +550,9 @@ function applyMuteState(entry) {
 
   entry.view.webContents
     .executeJavaScript(notificationPatch(muted), true)
-    .then((state) => log('mute', `${entry.service.id} : notifications ${state} | audio ${muted ? 'coupe' : 'actif'}`))
+    .then((state) =>
+      log('mute', `${entry.service.id} : notifications ${state} | audio ${muted ? 'coupe' : 'actif'}`)
+    )
     .catch((err) => log('mute', `${entry.service.id} : patch impossible (${err.message})`));
 }
 
@@ -497,7 +561,7 @@ function setMuted(id, muted) {
 
   const entry = views.get(id);
   if (entry) applyMuteState(entry);
-  else log('mute', `${id} : ${muted ? 'coupe' : 'actif'} (service pas encore charge)`);
+  else log('mute', `${id} : ${muted ? 'coupe' : 'actif'} (service pas charge)`);
 }
 
 // ---------------------------------------------------------------------------
@@ -505,13 +569,17 @@ function setMuted(id, muted) {
 // ---------------------------------------------------------------------------
 
 // Hotes autorises a ouvrir une vraie popup Electron : ce sont les flux d'auth
-// (Google/Discord) qui ont besoin de la session du service. Tout le reste part
-// dans le navigateur systeme.
+// qui ont besoin de la session du service. Tout le reste part dans le navigateur
+// systeme.
 const AUTH_HOST_PATTERNS = [
   /(^|\.)accounts\.google\.com$/,
   /(^|\.)accounts\.youtube\.com$/,
+  /(^|\.)login\.microsoftonline\.com$/,
+  /(^|\.)appleid\.apple\.com$/,
+  /(^|\.)facebook\.com$/,
   /(^|\.)discord\.com$/,
   /(^|\.)whatsapp\.com$/,
+  /(^|\.)slack\.com$/,
 ];
 
 function hostOf(url) {
@@ -535,7 +603,7 @@ function createServiceView(service) {
       nodeIntegration: false,
       sandbox: true,
       // Sans ca, Chromium throttle les timers/WebSocket des vues cachees :
-      // les 5 services en arriere-plan rateraient leurs notifications.
+      // les services en arriere-plan rateraient leurs notifications.
       backgroundThrottling: false,
       spellcheck: true,
     },
@@ -543,8 +611,9 @@ function createServiceView(service) {
 
   view.setBackgroundColor('#1e1e2e');
 
-  const entry = { service, view, status: 'idle', timer: null, badge: 0 };
+  const entry = { service, view, status: 'idle', timer: null, hibernateTimer: null, badge: 0 };
   views.set(service.id, entry);
+  hibernated.delete(service.id);
 
   const wc = view.webContents;
 
@@ -569,10 +638,10 @@ function createServiceView(service) {
   });
 
   // Detection des notifications non lues : les webapps mettent le compteur dans
-  // le titre de l'onglet -> "(3) WhatsApp", "(1) Discord", "(12) Google Agenda".
+  // le titre de l'onglet -> "(3) WhatsApp", "(1) Discord".
   wc.on('page-title-updated', (_e, title) => {
     // Titre brut journalise : c'est la seule source du comptage, et chaque
-    // service a sa propre convention (nombre de messages ? de conversations ?).
+    // service a sa propre convention (messages ? conversations ?).
     log('title', `${service.id} : "${title}"`);
     updateBadge(entry, title);
   });
@@ -638,6 +707,12 @@ function createServiceView(service) {
   layoutViews();
 
   loadService(entry);
+
+  // Un service preche naît en arriere-plan : sa minuterie de veille doit
+  // demarrer ici, sinon elle n'existerait qu'apres un premier changement de
+  // service — et un service jamais consulte ne s'endormirait jamais.
+  if (service.id !== activeId) scheduleHibernation(entry);
+
   return entry;
 }
 
@@ -649,7 +724,7 @@ function loadService(entry) {
   log('load', service.id, '->', service.url);
 
   view.webContents
-    .loadURL(service.url, { userAgent: service.userAgent })
+    .loadURL(service.url, { userAgent: userAgentFor(service) })
     .catch((err) => setStatus(entry, 'error', err.message));
 
   // Garde-fou : si rien n'a charge au bout de 15s, on rend la main a l'UI.
@@ -681,7 +756,7 @@ function setStatus(entry, status, message) {
  * Parse le compteur de non-lus dans le titre de la page.
  *  "(3) WhatsApp"       -> 3
  *  "(1) Discord | #dev" -> 1
- *  "• WhatsApp"         -> -1 (non-lus sans compteur : on affiche une pastille)
+ *  "• Discord"          -> -1 (non-lus sans compteur : pastille sans chiffre)
  *  "WhatsApp"           -> 0
  */
 function parseBadgeCount(title) {
@@ -701,14 +776,75 @@ function updateBadge(entry, title) {
   refreshTrayTooltip();
 }
 
+// ---------------------------------------------------------------------------
+// Mise en veille
+//
+// Un service en veille est detruit : son process Chromium disparait et la
+// memoire est rendue. En contrepartie il ne remonte plus ni badge ni
+// notification jusqu'au prochain clic. C'est le seul arbitrage possible — un
+// service qui notifie est un service qui tourne.
+// ---------------------------------------------------------------------------
+
+function hibernateService(id, reason) {
+  const entry = views.get(id);
+  if (!entry) return;
+
+  // Le service affiche n'est jamais mis en veille : la zone deviendrait vide.
+  if (id === activeId) return;
+
+  clearTimeout(entry.timer);
+  clearTimeout(entry.hibernateTimer);
+
+  mainWindow?.contentView.removeChildView(entry.view);
+  entry.view.webContents.close();
+  views.delete(id);
+  hibernated.add(id);
+
+  log('veille', `${id} endormi (${reason})`);
+  send('hub:status', { id, status: 'hibernated' });
+  send('hub:badge', { id, count: 0 });
+  refreshTrayTooltip();
+}
+
+/**
+ * Programme la veille d'un service qui vient de passer en arriere-plan.
+ *
+ * A n'appeler QUE lorsqu'un service cesse d'etre affiche. Le rappeler a chaque
+ * changement de service, y compris pour ceux qui etaient deja en arriere-plan,
+ * relancerait leur compte a rebours : le delai ne s'ecoulerait alors que si
+ * l'utilisateur ne touche plus du tout a la sidebar, ce qui n'est pas
+ * "inactivite de ce service".
+ */
+function scheduleHibernation(entry) {
+  clearTimeout(entry.hibernateTimer);
+
+  const minutes = Number(entry.service.hibernateAfter) || 0;
+  if (minutes <= 0) return;
+
+  entry.hibernateTimer = setTimeout(
+    () => hibernateService(entry.service.id, `${minutes} min sans consultation`),
+    minutes * 60000
+  );
+}
+
 function showService(id) {
-  const service = SERVICES.find((s) => s.id === id);
+  const service = getService(id);
   if (!service) return;
 
+  const previousId = activeId;
   activeId = id;
   store.set('lastActiveId', id);
 
+  // Le service demande se reveille tout seul : createServiceView le recharge.
   const entry = views.get(id) || createServiceView(service);
+  clearTimeout(entry.hibernateTimer); // on le consulte : son compte a rebours s'annule
+
+  // Seul le service qu'on vient de quitter demarre son compte a rebours. Les
+  // autres gardent le leur, deja en cours.
+  if (previousId && previousId !== id) {
+    const previous = views.get(previousId);
+    if (previous) scheduleHibernation(previous);
+  }
 
   for (const [otherId, other] of views) {
     other.view.setVisible(otherId === id && other.status !== 'error');
@@ -761,12 +897,13 @@ function handleShortcut(event, input) {
 
   const key = (input.key || '').toLowerCase();
   const activeEntry = views.get(activeId);
+  const services = orderedServices();
 
-  // Ctrl+1..6 : switch de service, dans l'ordre affiche par la sidebar
+  // Ctrl+1..9 : switch de service, dans l'ordre affiche par la sidebar
   const digit = Number(key);
-  if (!input.shift && digit >= 1 && digit <= SERVICES.length) {
+  if (!input.shift && digit >= 1 && digit <= Math.min(9, services.length)) {
     event.preventDefault();
-    showService(orderedServices()[digit - 1].id);
+    showService(services[digit - 1].id);
     return;
   }
 
@@ -829,28 +966,91 @@ function createTray() {
 function refreshTrayMenu() {
   if (!tray) return;
 
-  const menu = Menu.buildFromTemplate([
+  const template = [
     ...orderedServices().map((service, index) => ({
-      label: service.name,
-      accelerator: `CommandOrControl+${index + 1}`,
+      label: hibernated.has(service.id) ? `${service.name} (en veille)` : service.name,
+      accelerator: index < 9 ? `CommandOrControl+${index + 1}` : undefined,
       click: () => {
         showWindow();
         showService(service.id);
       },
     })),
     { type: 'separator' },
-    { label: 'Afficher / masquer', click: () => (mainWindow?.isVisible() ? mainWindow.hide() : showWindow()) },
-    { type: 'separator' },
-    { label: 'Quitter', accelerator: 'CommandOrControl+Q', click: quitApp },
-  ]);
+    {
+      label: 'Afficher / masquer',
+      click: () => (mainWindow?.isVisible() ? mainWindow.hide() : showWindow()),
+    },
+  ];
 
-  tray.setContextMenu(menu);
+  if (pendingUpdate) {
+    template.push(
+      { type: 'separator' },
+      { label: `Installer la version ${pendingUpdate}`, click: installUpdate }
+    );
+  }
+
+  template.push(
+    { type: 'separator' },
+    { label: 'Quitter', accelerator: 'CommandOrControl+Q', click: quitApp }
+  );
+
+  tray.setContextMenu(Menu.buildFromTemplate(template));
 }
 
 function refreshTrayTooltip() {
   if (!tray) return;
-  const total = [...views.values()].reduce((sum, e) => sum + Math.max(0, e.badge), 0);
+  const total = [...views.values()].reduce((sum, entry) => sum + Math.max(0, entry.badge), 0);
   tray.setToolTip(total > 0 ? `Nexus - ${total} non lus` : 'Nexus');
+}
+
+// ---------------------------------------------------------------------------
+// Mise a jour automatique (GitHub Releases via electron-updater)
+// ---------------------------------------------------------------------------
+
+function setupUpdater() {
+  // Hors packaging il n'y a pas de version installee a remplacer : electron-updater
+  // chercherait un dev-app-update.yml inexistant et jetterait a chaque demarrage.
+  if (!app.isPackaged) {
+    log('update', 'ignore : application non packagee');
+    return;
+  }
+
+  autoUpdater.logger = {
+    info: (message) => log('update', message),
+    warn: (message) => log('update', `attention : ${message}`),
+    error: (message) => log('update', `erreur : ${message}`),
+    debug: () => {},
+  };
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('update-available', (info) => {
+    log('update', `version ${info.version} disponible, telechargement en cours`);
+    send('hub:update', { state: 'downloading', version: info.version });
+  });
+
+  autoUpdater.on('update-not-available', () => log('update', 'deja a jour'));
+
+  autoUpdater.on('update-downloaded', (info) => {
+    pendingUpdate = info.version;
+    log('update', `version ${info.version} prete, en attente de redemarrage`);
+    send('hub:update', { state: 'ready', version: info.version });
+    refreshTrayMenu();
+  });
+
+  autoUpdater.on('error', (err) => log('update', `echec : ${err.message}`));
+
+  const check = () => autoUpdater.checkForUpdates().catch(() => {});
+  check();
+  setInterval(check, UPDATE_INTERVAL_MS);
+}
+
+function installUpdate() {
+  if (!pendingUpdate) return;
+  log('update', `installation de ${pendingUpdate}`);
+  isQuitting = true; // sinon le close-to-tray empecherait le redemarrage
+  autoUpdater.quitAndInstall();
 }
 
 // ---------------------------------------------------------------------------
@@ -916,8 +1116,14 @@ function createWindow() {
     if (saved.maximized) mainWindow.maximize();
     mainWindow.show();
 
-    // Dernier service actif au relancement (ou le premier de la liste).
     const services = orderedServices();
+    if (!services.length) {
+      log('services', 'aucun service configure');
+      if (isDev) mainWindow.webContents.openDevTools({ mode: 'detach' });
+      return;
+    }
+
+    // Dernier service actif au relancement (ou le premier de la liste).
     const lastId = store.get('lastActiveId');
     const startId = services.some((s) => s.id === lastId) ? lastId : services[0].id;
     showService(startId);
@@ -929,11 +1135,10 @@ function createWindow() {
     for (const service of services) {
       if (service.id === startId) continue;
 
-      // `preload: false` dans services.js : service charge seulement au premier
-      // clic. Il economise un process Chromium, mais ne remonte ni badge ni
-      // notification tant qu'il n'a pas ete ouvert au moins une fois.
       if (service.preload === false) {
-        log('preload', `${service.id} ignore (preload: false)`);
+        log('preload', `${service.id} ignore (chargement a la demande)`);
+        hibernated.add(service.id);
+        send('hub:status', { id: service.id, status: 'hibernated' });
         continue;
       }
 
@@ -975,7 +1180,10 @@ function createWindow() {
   });
 
   mainWindow.on('closed', () => {
-    for (const entry of views.values()) clearTimeout(entry.timer);
+    for (const entry of views.values()) {
+      clearTimeout(entry.timer);
+      clearTimeout(entry.hibernateTimer);
+    }
     views.clear();
     mainWindow = null;
   });
@@ -989,34 +1197,194 @@ function quitApp() {
 }
 
 // ---------------------------------------------------------------------------
+// Creation / edition / suppression de services
+// ---------------------------------------------------------------------------
+
+/** Payload envoye a la sidebar : tout ce qu'il faut pour afficher et editer. */
+function serviceForRenderer(service) {
+  return {
+    id: service.id,
+    name: service.name,
+    url: service.url,
+    color: service.color,
+    initials: service.initials,
+    spoofUserAgent: Boolean(service.spoofUserAgent),
+    preload: service.preload !== false,
+    hibernateAfter: Number(service.hibernateAfter) || 0,
+    muted: isMuted(service.id),
+    hibernating: hibernated.has(service.id),
+    ...resolveIcon(service),
+  };
+}
+
+function broadcastServices() {
+  send('hub:services', { services: orderedServices().map(serviceForRenderer) });
+  refreshTrayMenu();
+}
+
+function normalizeUrl(raw) {
+  const value = (raw || '').trim();
+  if (!value) return null;
+  // Saisir "web.whatsapp.com" doit marcher : sans schema, new URL() echoue et le
+  // service ne chargerait jamais.
+  const withScheme = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+  try {
+    return new URL(withScheme).toString();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Cree ou met a jour un service. Retourne { ok } ou { error } — le renderer
+ * affiche le message tel quel dans le formulaire.
+ */
+function saveService(draft) {
+  const name = (draft.name || '').trim();
+  const url = normalizeUrl(draft.url);
+
+  if (!name) return { error: 'Le nom est obligatoire.' };
+  if (!url) return { error: "L'URL n'est pas valide." };
+
+  const services = allServices();
+  const existing = draft.id ? services.find((service) => service.id === draft.id) : null;
+  if (draft.id && !existing) return { error: 'Ce service n\'existe plus.' };
+
+  const settings = {
+    name,
+    url,
+    color: /^#[0-9a-f]{6}$/i.test(draft.color || '') ? draft.color : '#45475a',
+    initials: (draft.initials || name).trim().slice(0, 4).toUpperCase(),
+    spoofUserAgent: Boolean(draft.spoofUserAgent),
+    preload: draft.preload !== false,
+    hibernateAfter: Math.max(0, Number(draft.hibernateAfter) || 0),
+  };
+
+  if (existing) {
+    const urlChanged = existing.url !== settings.url;
+    const spoofChanged = existing.spoofUserAgent !== settings.spoofUserAgent;
+
+    const updated = services.map((service) =>
+      service.id === existing.id ? { ...service, ...settings } : service
+    );
+    store.set('services', updated);
+    log('services', `${existing.id} modifie`);
+
+    const entry = views.get(existing.id);
+    if (entry) {
+      entry.service = withDefaults({ ...existing, ...settings });
+      // L'UA est porte par la session : il faut le rejouer avant de recharger,
+      // sinon la page repart avec l'ancienne identite.
+      if (spoofChanged) applySessionUserAgent(entry.service);
+      if (urlChanged || spoofChanged) loadService(entry);
+    }
+  } else {
+    const taken = new Set(services.map((service) => service.id));
+    let id = slugify(name);
+    for (let n = 2; taken.has(id); n++) id = `${slugify(name)}-${n}`;
+
+    const service = withDefaults({
+      id,
+      partition: `persist:${id}`, // partition dediee => session etanche des la creation
+      ...settings,
+    });
+
+    store.set('services', [...services, service]);
+    store.set('order', [...(store.get('order') || []), id]);
+    log('services', `${id} cree (${settings.url})`);
+  }
+
+  broadcastServices();
+  return { ok: true };
+}
+
+async function deleteService(id) {
+  const service = getService(id);
+  if (!service) return { error: 'Service introuvable.' };
+
+  const { response, checkboxChecked } = await dialog.showMessageBox(mainWindow, {
+    type: 'warning',
+    buttons: ['Annuler', 'Supprimer'],
+    defaultId: 0,
+    cancelId: 0,
+    title: 'Supprimer le service',
+    message: `Supprimer « ${service.name} » ?`,
+    detail:
+      'Le service disparait de la sidebar. Sa session (connexion, cookies) est conservee ' +
+      'sur le disque, sauf si tu coches la case ci-dessous.',
+    checkboxLabel: 'Effacer aussi les donnees de session',
+    checkboxChecked: false,
+  });
+
+  if (response !== 1) return { ok: false };
+
+  // La vue doit mourir avant la config : sinon elle continue de tourner sans
+  // service correspondant.
+  const entry = views.get(id);
+  if (entry) {
+    clearTimeout(entry.timer);
+    clearTimeout(entry.hibernateTimer);
+    mainWindow?.contentView.removeChildView(entry.view);
+    entry.view.webContents.close();
+    views.delete(id);
+  }
+  hibernated.delete(id);
+  iconCache.delete(id);
+
+  store.set(
+    'services',
+    allServices().filter((service) => service.id !== id)
+  );
+  store.set('order', (store.get('order') || []).filter((entryId) => entryId !== id));
+
+  for (const key of ['icons', 'muted']) {
+    const map = { ...store.get(key) };
+    delete map[id];
+    store.set(key, map);
+  }
+
+  if (checkboxChecked) {
+    await session.fromPartition(service.partition).clearStorageData();
+    log('services', `${id} : donnees de session effacees`);
+  }
+
+  log('services', `${id} supprime`);
+
+  if (activeId === id) {
+    activeId = null;
+    const next = orderedServices()[0];
+    if (next) showService(next.id);
+  }
+
+  broadcastServices();
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
 // IPC sidebar -> main
 // ---------------------------------------------------------------------------
 
 ipcMain.handle('hub:bootstrap', () => ({
-  // On n'expose que le strict necessaire a l'UI (pas les UA ni les partitions).
-  services: orderedServices().map((service) => ({
-    id: service.id,
-    name: service.name,
-    color: service.color,
-    initials: service.initials,
-    // Icone choisie > icone declaree dans services.js > derniere favicon connue
-    // (le renderer peut etre recharge alors que les services tournent deja).
-    ...resolveIcon(service),
-  })),
+  services: orderedServices().map(serviceForRenderer),
   activeId,
+  version: app.getVersion(),
+  update: pendingUpdate ? { state: 'ready', version: pendingUpdate } : null,
   // Base servant a composer l'icone du tray avec le compteur par-dessus.
   trayBase: nativeImage.createFromPath(ICON_PATH).resize({ width: 64, height: 64 }).toDataURL(),
 }));
 
+ipcMain.handle('hub:service-save', (_e, draft) => saveService(draft || {}));
+ipcMain.handle('hub:service-delete', (_e, id) => deleteService(id));
+
 /** Enregistre un nouvel ordre complet (drag & drop cote sidebar). */
 ipcMain.on('hub:reorder', (_e, ids) => {
-  const known = new Set(SERVICES.map((service) => service.id));
+  const known = new Set(allServices().map((service) => service.id));
   const order = (ids || []).filter((id) => known.has(id));
 
-  // Un ordre partiel signifierait un desaccord entre la sidebar et services.js :
+  // Un ordre partiel signifierait un desaccord entre la sidebar et le store :
   // on prefere ne rien enregistrer plutot que de perdre un service.
-  if (order.length !== SERVICES.length) {
-    log('order', `ordre ignore : ${order.length}/${SERVICES.length} services`);
+  if (order.length !== known.size) {
+    log('order', `ordre ignore : ${order.length}/${known.size} services`);
     return;
   }
 
@@ -1039,17 +1407,21 @@ function moveService(id, delta) {
   send('hub:order', { order });
 }
 
-// Clic droit sur une icone de la sidebar : menu natif (icone, ordre, reload).
+// Clic droit sur une icone de la sidebar : menu natif.
 ipcMain.on('hub:service-menu', (_e, id) => {
-  const service = SERVICES.find((s) => s.id === id);
+  const service = getService(id);
   if (!service) return;
 
   const order = orderedServices();
   const index = order.findIndex((s) => s.id === id);
   const entry = views.get(id);
+  const asleep = hibernated.has(id);
 
   const menu = Menu.buildFromTemplate([
     { label: service.name, enabled: false },
+    { type: 'separator' },
+    { label: 'Modifier...', click: () => send('hub:edit-service', { id }) },
+    { label: 'Supprimer...', click: () => deleteService(id) },
     { type: 'separator' },
     {
       label: 'Notifications',
@@ -1059,6 +1431,11 @@ ipcMain.on('hub:service-menu', (_e, id) => {
       // le handler recoit la valeur d'avant ou d'apres la bascule, ce qui
       // inversait l'enregistrement.
       click: () => setMuted(id, !isMuted(id)),
+    },
+    {
+      label: asleep ? 'En veille' : 'Mettre en veille',
+      enabled: Boolean(entry) && id !== activeId,
+      click: () => hibernateService(id, 'demande manuelle'),
     },
     { type: 'separator' },
     { label: "Changer l'icone...", click: () => chooseIcon(id) },
@@ -1104,10 +1481,24 @@ ipcMain.on('hub:overlay', (_e, { dataUrl, description }) => {
 });
 
 ipcMain.on('hub:select', (_e, id) => showService(id));
+ipcMain.on('hub:install-update', installUpdate);
+
+// La vue du service recouvre toute la zone a droite de la sidebar : un
+// formulaire affiche par le renderer serait cache dessous. On escamote donc la
+// vue active le temps que la boite de dialogue est ouverte.
+ipcMain.on('hub:modal', (_e, open) => {
+  const entry = views.get(activeId);
+  if (!entry) return;
+  entry.view.setVisible(!open && entry.status !== 'error');
+});
 
 ipcMain.on('hub:retry', (_e, id) => {
   const entry = views.get(id);
   if (entry) loadService(entry);
+  else {
+    const service = getService(id);
+    if (service) createServiceView(service);
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -1115,10 +1506,15 @@ ipcMain.on('hub:retry', (_e, id) => {
 // ---------------------------------------------------------------------------
 
 app.whenReady().then(() => {
-  log('app', `Electron ${process.versions.electron} / Chromium ${process.versions.chrome}`);
-  log('app', `${SERVICES.length} services : ${SERVICES.map((s) => s.id).join(', ')}`);
+  log('app', `Nexus ${app.getVersion()} — Electron ${process.versions.electron} / Chromium ${process.versions.chrome}`);
+  seedServices();
+
+  const services = allServices();
+  log('app', `${services.length} services : ${services.map((s) => s.id).join(', ')}`);
+
   createWindow();
   createTray();
+  setupUpdater();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
