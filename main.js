@@ -470,9 +470,16 @@ const notificationPatch = (muted) => `(() => {
 function applyMuteState(entry) {
   const muted = isMuted(entry.service.id);
 
+  // Troisieme voie, la plus sournoise : les webapps jouent leur propre son
+  // depuis la page (le "ding" de WhatsApp), sans passer par l'API Notification.
+  // Aucune barriere cote notifications ne peut l'arreter — il faut couper
+  // l'audio du webContents.
+  // Consequence assumee : un service coupe est aussi muet pendant un appel.
+  entry.view.webContents.setAudioMuted(muted);
+
   entry.view.webContents
     .executeJavaScript(notificationPatch(muted), true)
-    .then((state) => log('mute', `${entry.service.id} : notifications ${state}`))
+    .then((state) => log('mute', `${entry.service.id} : notifications ${state} | audio ${muted ? 'coupe' : 'actif'}`))
     .catch((err) => log('mute', `${entry.service.id} : patch impossible (${err.message})`));
 }
 
@@ -554,7 +561,12 @@ function createServiceView(service) {
 
   // Detection des notifications non lues : les webapps mettent le compteur dans
   // le titre de l'onglet -> "(3) WhatsApp", "(1) Discord", "(12) Google Agenda".
-  wc.on('page-title-updated', (_e, title) => updateBadge(entry, title));
+  wc.on('page-title-updated', (_e, title) => {
+    // Titre brut journalise : c'est la seule source du comptage, et chaque
+    // service a sa propre convention (nombre de messages ? de conversations ?).
+    log('title', `${service.id} : "${title}"`);
+    updateBadge(entry, title);
+  });
 
   // Icone : favicon officielle du site, sauf si une icone locale est declaree.
   wc.on('page-favicon-updated', (_e, favicons) => fetchFavicon(entry, favicons));

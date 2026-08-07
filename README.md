@@ -68,6 +68,21 @@ garde une reference ; ensuite seul un drapeau bascule.
 Les badges de non-lus continuent de fonctionner sur un service coupe : c'est le
 son et la pop-up Windows qui disparaissent, pas le comptage.
 
+Trois voies mènent au bruit, et couper la seule API Notification n'en ferme
+qu'une :
+
+| Voie | Blocage |
+| --- | --- |
+| `new Notification(...)` depuis la page | wrapper pose sur `dom-ready` |
+| `ServiceWorkerRegistration.showNotification()` | prototype enveloppe |
+| Push recu directement par le service worker | permission Chromium refusee |
+| Son joue par la page elle-meme (le "ding" de WhatsApp) | `setAudioMuted(true)` |
+
+La derniere ligne est la moins evidente : WhatsApp joue son propre son via l'API
+audio, totalement en dehors du systeme de notifications. **Consequence assumee :
+un service coupe est aussi muet pendant un appel.** Pour decoupler les deux,
+retirer l'appel a `setAudioMuted` dans `applyMuteState` (`main.js`).
+
 ## Tray & fermeture
 
 - **Clic gauche** sur l'icone : affiche / masque la fenetre.
