@@ -98,7 +98,22 @@ await evalJs(`(() => { serviceLockPin.value = '1234'; serviceLockForm.requestSub
 await sleep(600);
 check('bon code accepte, service revele', !(await visible('#service-lock')));
 
-// --- 5. Verrouillage global puis deverrouillage -----------------------------
+// --- 4bis. Le code est redemande a chaque retour sur le service -------------
+await evalJs(`window.hub.select('${first}')`);
+await sleep(400);
+await evalJs(`window.hub.select('${second}')`);
+await sleep(600);
+check('code redemande apres un aller-retour', await visible('#service-lock'));
+await evalJs(`(() => { serviceLockPin.value = '1234'; serviceLockForm.requestSubmit(); })()`);
+await sleep(400);
+
+// --- 5. Verrouillage global (code d'app distinct) puis deverrouillage -------
+// Le code global n'existe pas encore : on le definit via le formulaire dedie.
+await evalJs(`openLockSetup('set')`);
+await evalJs(`(() => { lockFields.next.value = '1111'; lockFields.confirm.value = '1111'; document.getElementById('lock-setup-form').requestSubmit(); })()`);
+await sleep(600);
+check('code global defini', !(await visible('#lock-setup')));
+
 // (Ctrl+L passe par before-input-event, que le CDP ne sait pas atteindre :
 // on verrouille par l'API, le raccourci reste couvert par le test manuel.)
 await evalJs(`window.hub.lockNow()`);
@@ -107,7 +122,11 @@ check("lockNow verrouille l'app", await visible('#lockscreen'));
 await evalJs(`(() => { lockPin.value = '0000'; document.getElementById('lock-form').requestSubmit(); })()`);
 await sleep(600);
 check('mauvais code global refuse', await visible('#lock-error'));
+// Le code du service ne deverrouille PAS l'app : les deux sont independants.
 await evalJs(`(() => { lockPin.value = '1234'; document.getElementById('lock-form').requestSubmit(); })()`);
+await sleep(600);
+check('le code du service ne deverrouille pas l’app', await visible('#lockscreen'));
+await evalJs(`(() => { lockPin.value = '1111'; document.getElementById('lock-form').requestSubmit(); })()`);
 await sleep(600);
 check('bon code global accepte', !(await visible('#lockscreen')));
 
@@ -131,6 +150,18 @@ check(
   'bouton revenu en "demander le code"',
   await evalJs(`document.getElementById('f-protect').textContent === t('form.protectOn')`)
 );
+
+// --- 8. Reactiver = creer un code NEUF (l'ancien a disparu) -----------------
+await evalJs(`document.getElementById('f-protect').click()`);
+await sleep(400);
+check(
+  'reactivation : champs de creation, pas de saisie de l’ancien code',
+  await evalJs(
+    `!document.getElementById('lock-new-field').classList.contains('hidden') && ` +
+      `document.getElementById('lock-current-field').classList.contains('hidden')`
+  )
+);
+await evalJs(`closeLockSetup()`);
 await evalJs(`closeForm()`);
 
 console.log(failures ? `${failures} echec(s)` : 'TOUT PASSE');

@@ -941,18 +941,14 @@ function refreshProtectButton() {
 }
 
 // Le bouton du formulaire : chaque bascule passe par la fenetre de code.
-// Activation sans code existant -> creation (deux saisies). Activation avec
-// code, ou desactivation -> saisie du code. L'option ne change que si le code
-// est bon, et on retombe sur le formulaire dans tous les cas.
-protectButton.addEventListener('click', async () => {
+// Activer cree LE code de ce service (deux saisies) ; desactiver exige ce
+// code et le supprime. L'option ne change que si le code est bon, et on
+// retombe sur le formulaire dans tous les cas.
+protectButton.addEventListener('click', () => {
   if (!editingId) return;
 
   const enable = !formProtected;
-  const { hasPin } = await window.hub.lockState();
-  openLockSetup(enable ? (hasPin ? 'enable' : 'set') : 'disable', {
-    serviceId: editingId,
-    enable,
-  });
+  openLockSetup(enable ? 'enable' : 'disable', { serviceId: editingId, enable });
 });
 
 function setLocked(isLocked) {
@@ -1060,14 +1056,19 @@ function openLockSetup(mode, intent) {
   lockIntent = intent || null;
   lockSetupTitle.textContent = t(`lock.title.${mode}`);
 
-  // 'set' : creation du code, deux saisies, pas de champ "code actuel".
-  // 'change' : les trois champs.
-  // 'remove', 'enable', 'disable' : seule la saisie du code.
-  const codeOnly = mode === 'remove' || mode === 'enable' || mode === 'disable';
-  document.getElementById('lock-current-field').classList.toggle('hidden', mode === 'set');
+  // 'set' et 'enable' : creation d'un code, deux saisies, pas de champ "code
+  // actuel". 'change' : les trois champs. 'remove' et 'disable' : seule la
+  // saisie du code.
+  const creation = mode === 'set' || mode === 'enable';
+  const codeOnly = mode === 'remove' || mode === 'disable';
+  document.getElementById('lock-current-field').classList.toggle('hidden', creation);
   document.getElementById('lock-new-field').classList.toggle('hidden', codeOnly);
   document.getElementById('lock-confirm-field').classList.toggle('hidden', codeOnly);
-  document.querySelector('#lock-setup .lock-hint').classList.toggle('hidden', codeOnly);
+
+  const hint = document.querySelector('#lock-setup .lock-hint');
+  hint.classList.toggle('hidden', codeOnly);
+  hint.textContent = mode === 'enable' ? t('lock.hintService') : t('lock.hint');
+
   lockSetupSave.textContent =
     mode === 'remove' ? t('lock.removeConfirm') : codeOnly ? t('lock.confirmAction') : t('form.save');
 
@@ -1075,7 +1076,7 @@ function openLockSetup(mode, intent) {
   lockSetupError.classList.add('hidden');
   lockSetup.classList.remove('hidden');
   syncModalState();
-  (mode === 'set' ? lockFields.next : lockFields.current).focus();
+  (creation ? lockFields.next : lockFields.current).focus();
 }
 
 function closeLockSetup() {

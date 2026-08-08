@@ -840,6 +840,7 @@ function hibernateService(id, reason) {
   entry.view.webContents.close();
   views.delete(id);
   hibernated.add(id);
+  unlockedIds.delete(id); // au reveil, un service protege redemande son code
 
   log('veille', `${id} endormi (${reason})`);
   send('hub:status', { id, status: 'hibernated' });
@@ -891,6 +892,10 @@ function showService(id) {
   if (previousId && previousId !== id && previousId !== splitId) {
     const previous = views.get(previousId);
     if (previous) scheduleHibernation(previous);
+
+    // Un service protege se re-arme des qu'il quitte l'ecran : son code garde
+    // chaque ouverture, pas seulement le retour d'un verrouillage global.
+    if (isProtected(previousId)) unlockedIds.delete(previousId);
   }
 
   applyViewVisibility();
@@ -948,12 +953,15 @@ function setSplit(id, direction) {
 function closeSplit(reason) {
   if (!splitId) return;
 
-  const entry = views.get(splitId);
+  const leavingId = splitId;
+  const entry = views.get(leavingId);
   log('split', `vue partagee fermee (${reason})`);
   setSplitId(null);
 
-  // Redevenu invisible, le service de droite reprend sa vie d'arriere-plan.
+  // Redevenu invisible, le service reprend sa vie d'arriere-plan, et son code
+  // se re-arme s'il est protege.
   if (entry) scheduleHibernation(entry);
+  if (isProtected(leavingId) && leavingId !== activeId) unlockedIds.delete(leavingId);
 
   applyViewVisibility();
   layoutViews();
@@ -1056,48 +1064,60 @@ function hasPin() {
   return Boolean(store.get('lock')?.hash);
 }
 
-function verifyPin(pin) {
-  const lock = store.get('lock') || {};
-  if (!lock.hash || !lock.salt) return false;
+function matchesCode(pin, entry) {
+  if (!entry?.hash || !entry?.salt) return false;
 
-  const candidate = Buffer.from(hashPin(pin || '', lock.salt), 'hex');
-  const expected = Buffer.from(lock.hash, 'hex');
+  const candidate = Buffer.from(hashPin(pin || '', entry.salt), 'hex');
+  const expected = Buffer.from(entry.hash, 'hex');
   return candidate.length === expected.length && crypto.timingSafeEqual(candidate, expected);
 }
 
-// -- Verrouillage par service ------------------------------------------------
-// En plus du verrouillage global, un service peut exiger le code a lui seul
-// (clic droit > "Demander le code"). Un service protege se charge normalement
-// en arriere-plan (notifications comprises) mais sa vue reste masquee derriere
-// un ecran de code tant qu'il n'a pas ete deverrouille. Le deverrouillage vaut
-// jusqu'au prochain verrouillage de l'app (Ctrl+L, veille, inactivite).
+/** Code global de l'app (Ctrl+L). */
+function verifyPin(pin) {
+  return matchesCode(pin, store.get('lock'));
+}
 
-/** Services proteges deja deverrouilles depuis le dernier verrouillage. */
+/** Code propre a un service protege. */
+function verifyServiceCode(id, pin) {
+  return matchesCode(pin, store.get('protected')?.[id]);
+}
+
+// -- Verrouillage par service ------------------------------------------------
+// Chaque service protege porte SON code, cree au moment de l'activation et
+// supprime avec elle : deux services proteges ont deux codes independants, et
+// tout ca est distinct du code global de l'app (Ctrl+L). Un service protege se
+// charge normalement en arriere-plan (notifications comprises) mais sa vue
+// reste masquee derriere un ecran de code. Le code est redemande a chaque
+// retour sur le service : le deverrouillage ne vaut que tant qu'il est a
+// l'ecran.
+
+/** Services proteges dont le code a ete saisi et qui sont restes a l'ecran. */
 const unlockedIds = new Set();
 
-/** La protection n'est effective que si un code existe. */
 function isProtected(id) {
-  return Boolean(store.get('protected')?.[id]) && hasPin();
+  const entry = store.get('protected')?.[id];
+  // Une vieille config stockait `true` sans code : sans code a verifier, la
+  // protection est levee plutot que de bloquer le service pour toujours.
+  return Boolean(entry && entry.hash && entry.salt);
 }
 
 function needsCode(id) {
   return Boolean(id) && isProtected(id) && !unlockedIds.has(id);
 }
 
-/** Active ou retire la protection d'un service (via hub:service-protect). */
-function setProtection(id, wanted) {
+/** Pose ou retire le code d'un service ({ hash, salt } ou null). */
+function setProtection(id, entry) {
   const flags = { ...store.get('protected') };
-  const had = Boolean(flags[id]);
-  if (wanted) flags[id] = true;
+  if (entry) flags[id] = entry;
   else delete flags[id];
   store.set('protected', flags);
 
-  if (!wanted) unlockedIds.delete(id);
+  unlockedIds.delete(id);
   // Le service affiche ne se verrouille pas sous les yeux de celui qui vient
-  // d'activer l'option : la protection s'armera au prochain verrouillage.
-  if (wanted && (id === activeId || id === splitId)) unlockedIds.add(id);
+  // d'activer l'option : la protection s'armera quand il quittera l'ecran.
+  if (entry && (id === activeId || id === splitId)) unlockedIds.add(id);
 
-  if (wanted !== had) log('lock', `${id} : code ${wanted ? 'exige' : 'non exige'}`);
+  log('lock', `${id} : code ${entry ? 'exige' : 'retire'}`);
 }
 
 function lockApp(reason) {
@@ -1816,7 +1836,7 @@ function serviceForRenderer(service) {
     hibernateAfter: Number(service.hibernateAfter) || 0,
     muted: isMuted(service.id),
     hibernating: hibernated.has(service.id),
-    protected: Boolean(store.get('protected')?.[service.id]),
+    protected: isProtected(service.id),
     ...resolveIcon(service),
   };
 }
@@ -2015,7 +2035,7 @@ ipcMain.handle('hub:unlock', (_e, pin) => {
 /** Deverrouillage d'un seul service protege, depuis son ecran de code. */
 ipcMain.handle('hub:unlock-service', (_e, { id, pin } = {}) => {
   if (!needsCode(id)) return { ok: true };
-  if (!verifyPin(pin)) {
+  if (!verifyServiceCode(id, pin)) {
     log('lock', `${id} : code errone`);
     return { error: t('lock.wrong') };
   }
@@ -2029,38 +2049,34 @@ ipcMain.handle('hub:unlock-service', (_e, { id, pin } = {}) => {
   return { ok: true };
 });
 
-/** La sidebar a parfois besoin de savoir si un code existe (choix du mode). */
-ipcMain.handle('hub:lock-state', () => ({ hasPin: hasPin() }));
-
 /**
  * Activation / desactivation de la protection d'un service, depuis le bouton
- * de son formulaire. Chaque bascule se prouve : creation du code (deux
- * saisies) s'il n'en existe pas encore, saisie du code sinon. C'est ce qui
- * empeche de retirer la protection sans le connaitre.
+ * de son formulaire. L'activation CREE le code du service (deux saisies) ; la
+ * desactivation exige ce code et le supprime — reactiver reparti donc sur un
+ * code neuf, et chaque service a le sien.
  */
 ipcMain.handle('hub:service-protect', (_e, draft) => {
   const { id, enable } = draft || {};
   const service = getService(id);
   if (!service) return { error: t('error.serviceMissing') };
 
-  if (enable && !hasPin()) {
+  if (enable) {
     if ((draft.next || '').length < 4) return { error: t('lock.errorShort') };
     if (draft.next !== draft.confirm) return { error: t('lock.errorMismatch') };
 
     const salt = crypto.randomBytes(16).toString('hex');
-    store.set('lock', { ...store.get('lock'), hash: hashPin(draft.next, salt), salt });
-    log('lock', 'code defini');
-  } else if (!verifyPin(draft.code)) {
-    log('lock', `${id} : code errone (bascule de protection)`);
-    return { error: t('lock.wrong') };
+    setProtection(id, { hash: hashPin(draft.next, salt), salt });
+  } else {
+    if (!verifyServiceCode(id, draft.code)) {
+      log('lock', `${id} : code errone (desactivation)`);
+      return { error: t('lock.wrong') };
+    }
+    setProtection(id, null); // le code du service disparait avec la protection
   }
-
-  setProtection(id, Boolean(enable));
 
   applyViewVisibility();
   if (id === activeId) send('hub:active', { id, needsCode: needsCode(id) });
   broadcastServices(); // le drapeau protected des services a change
-  createApplicationMenu(); // et hasPin() a pu changer
 
   return { ok: true, protected: Boolean(enable) };
 });
