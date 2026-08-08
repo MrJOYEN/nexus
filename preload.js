@@ -60,6 +60,9 @@ contextBridge.exposeInMainWorld('hub', {
   /** { id } - le service actif a change (clic sidebar, raccourci, tray). */
   onActive: (callback) => on('hub:active', callback),
 
+  /** { id } - le service affiche dans la moitie droite (null = vue simple). */
+  onSplit: (callback) => on('hub:split', callback),
+
   /** { id, count } - count > 0 : compteur, -1 : pastille sans nombre, 0 : rien. */
   onBadge: (callback) => on('hub:badge', callback),
 

@@ -49,6 +49,8 @@ const hibernated = new Set();
 let mainWindow = null;
 let tray = null;
 let activeId = null;
+// Service affiche dans la moitie droite quand la vue partagee est active.
+let splitId = null;
 let isQuitting = false;
 // Demarrage masque avec une fenetre qui etait maximisee : maximize() afficherait
 // la fenetre, on note l'etat et on l'applique au premier vrai affichage.
@@ -79,6 +81,8 @@ const store = new Store({
     autostartHidden: false,
     // Correcteur orthographique dans les services.
     spellcheck: true,
+    // Vue partagee : id du service affiche a droite, restaure au lancement.
+    splitId: null,
   },
 });
 
@@ -762,7 +766,7 @@ function setStatus(entry, status, message) {
 
   // En erreur la vue est masquee : l'overlay "Reessayer" du renderer principal
   // devient visible dessous.
-  if (entry.service.id === activeId) {
+  if (entry.service.id === activeId || entry.service.id === splitId) {
     entry.view.setVisible(status !== 'error');
   }
 
@@ -806,8 +810,9 @@ function hibernateService(id, reason) {
   const entry = views.get(id);
   if (!entry) return;
 
-  // Le service affiche n'est jamais mis en veille : la zone deviendrait vide.
-  if (id === activeId) return;
+  // Un service affiche (a gauche comme a droite) n'est jamais mis en veille :
+  // la zone deviendrait vide.
+  if (id === activeId || id === splitId) return;
 
   clearTimeout(entry.timer);
   clearTimeout(entry.hibernateTimer);
@@ -849,6 +854,11 @@ function showService(id) {
   if (!service) return;
 
   const previousId = activeId;
+
+  // Cliquer le service deja affiche a droite : les deux moities s'echangent
+  // plutot que d'afficher le meme service des deux cotes.
+  if (id === splitId) setSplitId(previousId !== id ? previousId : null);
+
   activeId = id;
   store.set('lastActiveId', id);
 
@@ -857,16 +867,14 @@ function showService(id) {
   clearTimeout(entry.hibernateTimer); // on le consulte : son compte a rebours s'annule
 
   // Seul le service qu'on vient de quitter demarre son compte a rebours. Les
-  // autres gardent le leur, deja en cours.
-  if (previousId && previousId !== id) {
+  // autres gardent le leur, deja en cours. Un service qui reste visible dans la
+  // moitie droite ne s'endort pas.
+  if (previousId && previousId !== id && previousId !== splitId) {
     const previous = views.get(previousId);
     if (previous) scheduleHibernation(previous);
   }
 
-  for (const [otherId, other] of views) {
-    other.view.setVisible(otherId === id && other.status !== 'error');
-  }
-
+  applyViewVisibility();
   layoutViews();
   if (entry.status !== 'error') entry.view.webContents.focus();
 
@@ -874,23 +882,88 @@ function showService(id) {
   send('hub:active', { id });
 }
 
+/** Seuls le service actif et celui de la moitie droite sont visibles. */
+function applyViewVisibility() {
+  for (const [id, entry] of views) {
+    entry.view.setVisible((id === activeId || id === splitId) && entry.status !== 'error');
+  }
+}
+
 // ---------------------------------------------------------------------------
-// Layout : la vue active occupe toute la fenetre moins la sidebar
+// Vue partagee : un second service occupe la moitie droite
 // ---------------------------------------------------------------------------
+
+/** Change l'id de droite et previent la sidebar (le menu suit au prochain rendu). */
+function setSplitId(id) {
+  splitId = id;
+  store.set('splitId', id);
+  send('hub:split', { id });
+  createApplicationMenu(); // l'etat de "Fermer la vue partagee" change
+}
+
+function setSplit(id) {
+  const service = getService(id);
+  if (!service || id === activeId || id === splitId) return;
+
+  setSplitId(id);
+
+  // Le service de droite se reveille comme un service actif.
+  const entry = views.get(id) || createServiceView(service);
+  clearTimeout(entry.hibernateTimer);
+
+  applyViewVisibility();
+  layoutViews();
+  log('split', `${id} affiche a droite`);
+}
+
+function closeSplit(reason) {
+  if (!splitId) return;
+
+  const entry = views.get(splitId);
+  log('split', `vue partagee fermee (${reason})`);
+  setSplitId(null);
+
+  // Redevenu invisible, le service de droite reprend sa vie d'arriere-plan.
+  if (entry) scheduleHibernation(entry);
+
+  applyViewVisibility();
+  layoutViews();
+}
+
+// ---------------------------------------------------------------------------
+// Layout : la vue active occupe toute la fenetre moins la sidebar, ou la
+// moitie gauche quand la vue partagee est active
+// ---------------------------------------------------------------------------
+
+const SPLIT_GAP = 2; // laisse voir le fond de la fenetre entre les deux moities
 
 function layoutViews() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
 
   // getContentBounds = zone client (hors bordures/barre de titre OS).
   const { width, height } = mainWindow.getContentBounds();
-  const bounds = {
+  const area = {
     x: SIDEBAR_WIDTH,
     y: 0,
     width: Math.max(0, width - SIDEBAR_WIDTH),
     height: Math.max(0, height),
   };
 
-  for (const entry of views.values()) entry.view.setBounds(bounds);
+  const split = splitId ? views.get(splitId) : null;
+  const leftWidth = split ? Math.floor((area.width - SPLIT_GAP) / 2) : area.width;
+
+  for (const [id, entry] of views) {
+    entry.view.setBounds(
+      split && id === splitId
+        ? {
+            x: area.x + leftWidth + SPLIT_GAP,
+            y: 0,
+            width: area.width - leftWidth - SPLIT_GAP,
+            height: area.height,
+          }
+        : { ...area, width: leftWidth }
+    );
+  }
 }
 
 function send(channel, payload) {
@@ -1273,6 +1346,12 @@ function createApplicationMenu() {
           },
         },
         { type: 'separator' },
+        {
+          label: t('menu.view.splitClose'),
+          enabled: Boolean(splitId),
+          click: () => closeSplit('menu'),
+        },
+        { type: 'separator' },
         { role: 'togglefullscreen', label: t('menu.view.fullscreen') },
         {
           label: t('menu.view.devtoolsService'),
@@ -1434,6 +1513,11 @@ function createWindow() {
     const lastId = store.get('lastActiveId');
     const startId = services.some((s) => s.id === lastId) ? lastId : services[0].id;
     showService(startId);
+
+    // La vue partagee survit au redemarrage : elle etait visible, elle revient.
+    const savedSplit = store.get('splitId');
+    if (savedSplit && savedSplit !== startId && getService(savedSplit)) setSplit(savedSplit);
+    else if (savedSplit) store.set('splitId', null);
 
     // Les autres services sont charges en arriere-plan, en quinconce : sans ca
     // leurs badges et leurs notifications ne remonteraient qu'apres un premier
@@ -1656,6 +1740,11 @@ async function deleteService(id) {
 
   log('services', `${id} supprime`);
 
+  if (splitId === id) {
+    setSplitId(null);
+    layoutViews();
+  }
+
   if (activeId === id) {
     activeId = null;
     const next = orderedServices()[0];
@@ -1673,6 +1762,7 @@ async function deleteService(id) {
 ipcMain.handle('hub:bootstrap', () => ({
   services: orderedServices().map(serviceForRenderer),
   activeId,
+  splitId,
   version: app.getVersion(),
   onboarding: needsOnboarding(),
   // Le renderer est sandboxe : il ne lit pas les fichiers de langue, il recoit
@@ -1791,8 +1881,13 @@ ipcMain.on('hub:service-menu', (_e, id) => {
     },
     {
       label: asleep ? t('ctx.sleeping') : t('ctx.sleep'),
-      enabled: Boolean(entry) && id !== activeId,
+      enabled: Boolean(entry) && id !== activeId && id !== splitId,
       click: () => hibernateService(id, 'demande manuelle'),
+    },
+    {
+      label: id === splitId ? t('ctx.splitClose') : t('ctx.split'),
+      enabled: id === splitId || id !== activeId,
+      click: () => (id === splitId ? closeSplit('demande manuelle') : setSplit(id)),
     },
     { type: 'separator' },
     { label: t('ctx.icon'), click: () => chooseIcon(id) },
@@ -1844,9 +1939,11 @@ ipcMain.on('hub:install-update', installUpdate);
 // formulaire affiche par le renderer serait cache dessous. On escamote donc la
 // vue active le temps que la boite de dialogue est ouverte.
 ipcMain.on('hub:modal', (_e, open) => {
-  const entry = views.get(activeId);
-  if (!entry) return;
-  entry.view.setVisible(!open && entry.status !== 'error');
+  if (open) {
+    for (const entry of views.values()) entry.view.setVisible(false);
+  } else {
+    applyViewVisibility();
+  }
 });
 
 ipcMain.on('hub:retry', (_e, id) => {

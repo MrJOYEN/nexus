@@ -45,6 +45,7 @@ const items = new Map();
 const badges = new Map();
 
 let activeId = null;
+let splitId = null;
 let editingId = null;
 let catalog = [];
 let catalogIcons = {};
@@ -156,6 +157,7 @@ function renderSidebar(services) {
   });
 
   if (activeId) setActive(activeId);
+  if (splitId) setSplit(splitId);
   console.log(`[sidebar] ${services.length} service(s) rendus`);
 }
 
@@ -170,6 +172,14 @@ function setActive(id) {
     item.el.classList.toggle('active', itemId === id);
   }
   refreshOverlay();
+}
+
+/** Service affiche dans la moitie droite : sa tuile porte un liseré accent. */
+function setSplit(id) {
+  splitId = id;
+  for (const [itemId, item] of items) {
+    item.el.classList.toggle('split', itemId === id);
+  }
 }
 
 function setStatus(id, status, message) {
@@ -899,8 +909,10 @@ function startOnboarding() {
   catalogIcons = boot.catalogIcons || {};
 
   activeId = boot.activeId;
+  splitId = boot.splitId || null;
   renderSidebar(boot.services);
   if (boot.activeId) setActive(boot.activeId);
+  if (boot.splitId) setSplit(boot.splitId);
   showUpdate(boot.update);
   if (boot.onboarding) startOnboarding();
 
@@ -911,6 +923,7 @@ function startOnboarding() {
 
   window.hub.onStatus(({ id, status, message }) => setStatus(id, status, message));
   window.hub.onActive(({ id }) => setActive(id));
+  window.hub.onSplit(({ id }) => setSplit(id));
   window.hub.onBadge(({ id, count }) => setBadge(id, count));
   window.hub.onIcon(({ id, dataUrl, source }) => setIcon(id, dataUrl, source));
   window.hub.onOrder(({ order }) => applyOrder(order));

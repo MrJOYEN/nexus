@@ -184,6 +184,12 @@ body {
   opacity: 0.7;
 }
 
+/* Vue partagee : le service affiche dans la moitie droite porte un liseré */
+.service.split .avatar {
+  box-shadow: 0 0 0 2px var(--accent);
+  opacity: 1;
+}
+
 /* Glisser-deposer : l'icone tiree s'efface, sa place suit le curseur */
 .service.dragging {
   opacity: 0.35;
