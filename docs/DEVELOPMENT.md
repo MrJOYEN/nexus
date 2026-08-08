@@ -15,15 +15,15 @@ catalog.js         the "known services" list offered in the add form
 catalog-icons.js   fetching and caching of catalogue logos
 images.js          image format sniffing and ICO/WebP helpers
 i18n.js            translations, loaded in the main process only
-locales/           en.json (reference), fr.json
+locales/           en.json (reference), fr.json, es.json
 assets/            app icon, installer artwork (brand sources in assets/brand)
 ```
 
 The window is a `BrowserWindow` whose own webContents renders the sidebar.
 Each service is a `WebContentsView` laid over the content area, offset by the
-sidebar width. Only the active view is visible. Security settings are the
-same everywhere: `contextIsolation: true`, `nodeIntegration: false`,
-`sandbox: true`.
+sidebar width. Only the active view is visible, plus a second one on the
+right half when split view is on. Security settings are the same everywhere:
+`contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`.
 
 The service list itself lives in `config.json`
 (`%APPDATA%\Nexus\config.json`), not in code. It is created by the first-run
@@ -86,7 +86,51 @@ badges and notifications until it is reopened. That is the honest trade-off;
 a service that notifies is a service that runs. The auto-sleep countdown
 starts when a service leaves the foreground and is cancelled when it comes
 back. Do not rearm it on every service switch or nothing ever sleeps for an
-active user.
+active user. A service shown in the right half of split view counts as
+foreground: visible services never sleep.
+
+## Split view
+
+`splitId` designates a second service laid on the right half of the content
+area; `activeId` keeps the left half and stays "the active service"
+everywhere else (shortcuts, badges, menus). Clicking the tile of the service
+already shown on the right swaps the two halves instead of showing it twice.
+The pair survives restarts (`splitId` is persisted) and split closes itself
+when its service is deleted.
+
+## App lock
+
+A lock screen in the sidebar renderer covers the whole window while every
+`WebContentsView` is hidden (they are native layers: anything drawn by the
+renderer would stay under them). The code is stored as scrypt hash + salt in
+the config, verified in the main process only. While locked, service
+switching and app shortcuts are ignored.
+
+Be honest about what this is: a privacy screen, not encryption. The sessions
+on disk stay readable outside Nexus. A forgotten code is removed by deleting
+the `lock` section from `%APPDATA%\Nexus\config.json`; services stay signed
+in. Auto-lock listens to `powerMonitor` (`lock-screen`, `suspend`) and polls
+`getSystemIdleTime` every 30 s for the idle timeout, because idleness is not
+an event.
+
+## Spell checking
+
+Chromium's own spell checker, enabled per session. Languages follow the
+interface language plus English, filtered by
+`availableSpellCheckerLanguages`; dictionaries are downloaded on demand into
+the profile. Suggestions live in a context menu attached to each view, shown
+only in editable fields: elsewhere many web apps (Discord, Notion) draw
+their own menu and a second one on top would be noise. Menu actions call
+`wc.cut()` and friends explicitly rather than menu roles, because a role
+targets the focused webContents, not necessarily the one that was clicked.
+
+## Start with Windows
+
+`app.setLoginItemSettings`, applied only when packaged (in dev it would
+register electron.exe). The "start hidden" option passes `--hidden`, which
+skips the initial `show()` and leaves the app in the tray; a saved maximized
+state is applied on the first real show, because `maximize()` would reveal
+the window.
 
 ## Icons
 
