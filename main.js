@@ -33,6 +33,9 @@ const ICON_PATH = path.join(__dirname, 'assets', 'icon.ico');
 const ICONS_DIR = path.join(__dirname, 'assets', 'icons');
 
 const isDev = process.argv.includes('--dev');
+// Passe par l'entree de demarrage Windows quand "demarrer masque" est actif :
+// l'app s'ouvre dans la zone de notification, sans fenetre.
+const startHidden = process.argv.includes('--hidden');
 
 function log(scope, ...args) {
   console.log(`[${new Date().toTimeString().slice(0, 8)}] [${scope}]`, ...args);
@@ -47,6 +50,9 @@ let mainWindow = null;
 let tray = null;
 let activeId = null;
 let isQuitting = false;
+// Demarrage masque avec une fenetre qui etait maximisee : maximize() afficherait
+// la fenetre, on note l'etat et on l'applique au premier vrai affichage.
+let pendingMaximize = false;
 let pendingUpdate = null; // version telechargee, en attente de redemarrage
 
 // Persistance : electron-store ecrit dans %APPDATA%\Nexus\config.json
@@ -66,8 +72,11 @@ const store = new Store({
     order: [],
     // id -> true : services dont les notifications sont coupees.
     muted: {},
-    // 'system', 'en' ou 'fr'.
+    // 'system' ou un code de langue disponible ('en', 'fr', 'es').
     language: 'system',
+    // Lancement avec Windows, et demarrage masque dans la zone de notification.
+    autostart: false,
+    autostartHidden: false,
   },
 });
 
@@ -1127,6 +1136,28 @@ function createApplicationMenu() {
           ],
         },
         { type: 'separator' },
+        {
+          label: t('menu.file.autostart'),
+          type: 'checkbox',
+          checked: Boolean(store.get('autostart')),
+          click: () => {
+            store.set('autostart', !store.get('autostart'));
+            applyAutostart();
+            createApplicationMenu();
+          },
+        },
+        {
+          label: t('menu.file.autostartHidden'),
+          type: 'checkbox',
+          enabled: Boolean(store.get('autostart')),
+          checked: Boolean(store.get('autostartHidden')),
+          click: () => {
+            store.set('autostartHidden', !store.get('autostartHidden'));
+            applyAutostart();
+            createApplicationMenu();
+          },
+        },
+        { type: 'separator' },
         { label: t('menu.file.hide'), click: () => mainWindow?.hide() },
         { label: t('menu.file.quit'), ...shown('CommandOrControl+Q'), click: quitApp },
       ],
@@ -1251,9 +1282,27 @@ function scheduleSaveWindowState() {
 
 function showWindow() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (pendingMaximize) {
+    pendingMaximize = false;
+    mainWindow.maximize(); // maximize() affiche la fenetre
+  }
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
   mainWindow.focus();
+}
+
+/**
+ * Enregistre (ou retire) le lancement automatique aupres de Windows. En dev,
+ * openAtLogin enregistrerait electron.exe : le reglage est stocke mais seule
+ * l'app installee l'applique.
+ */
+function applyAutostart() {
+  if (!app.isPackaged) return;
+  app.setLoginItemSettings({
+    openAtLogin: Boolean(store.get('autostart')),
+    args: store.get('autostartHidden') ? ['--hidden'] : [],
+  });
+  log('autostart', `${store.get('autostart') ? 'actif' : 'inactif'}${store.get('autostartHidden') ? ' (masque)' : ''}`);
 }
 
 function createWindow() {
@@ -1286,8 +1335,13 @@ function createWindow() {
   mainWindow.webContents.on('before-input-event', handleShortcut);
 
   mainWindow.once('ready-to-show', () => {
-    if (saved.maximized) mainWindow.maximize();
-    mainWindow.show();
+    if (startHidden) {
+      pendingMaximize = saved.maximized;
+      log('window', 'demarrage masque dans la zone de notification (--hidden)');
+    } else {
+      if (saved.maximized) mainWindow.maximize();
+      mainWindow.show();
+    }
 
     const services = orderedServices();
     if (!services.length) {
@@ -1744,6 +1798,7 @@ app.whenReady().then(() => {
   createWindow();
   createTray();
   setupUpdater();
+  applyAutostart(); // aligne l'entree Windows sur la config a chaque demarrage
 
   // Prechargement des vignettes du catalogue : la grille doit etre chaude avant
   // que le formulaire ne s'ouvre. Pendant l'onboarding elle est visible tout de

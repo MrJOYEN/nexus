@@ -1,6 +1,8 @@
 {
   "menu.file": "File",
   "menu.file.new": "New service…",
+  "menu.file.autostart": "Start with Windows",
+  "menu.file.autostartHidden": "Start hidden in the tray",
   "menu.file.hide": "Hide to tray",
   "menu.file.quit": "Quit",
   "menu.edit": "Edit",

@@ -1,6 +1,8 @@
 {
   "menu.file": "Fichier",
   "menu.file.new": "Nouveau service…",
+  "menu.file.autostart": "Lancer au démarrage de Windows",
+  "menu.file.autostartHidden": "Démarrer masqué dans la zone de notification",
   "menu.file.hide": "Masquer dans la zone de notification",
   "menu.file.quit": "Quitter",
   "menu.edit": "Édition",

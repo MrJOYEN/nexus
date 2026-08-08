@@ -1,6 +1,8 @@
 {
   "menu.file": "Archivo",
   "menu.file.new": "Nuevo servicio…",
+  "menu.file.autostart": "Iniciar con Windows",
+  "menu.file.autostartHidden": "Iniciar oculto en la bandeja",
   "menu.file.hide": "Ocultar en la bandeja",
   "menu.file.quit": "Salir",
   "menu.edit": "Edición",
