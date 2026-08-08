@@ -639,8 +639,69 @@ body {
   filter: brightness(1.1);
 }
 
-/* Ecran de code d'un service protege : dans la zone de contenu seulement, la
-   sidebar reste accessible pour aller ailleurs. */
+/* Separateur de la vue partagee : occupe la bande laissee libre entre les deux
+   vues natives. Position et taille posees par sidebar.js selon hub:layout. */
+#split-divider {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#split-divider.v {
+  cursor: col-resize;
+}
+
+#split-divider.h {
+  cursor: row-resize;
+}
+
+/* Poignee visible au centre de la bande */
+#split-divider::after {
+  content: "";
+  border-radius: 2px;
+  background: var(--divider);
+  transition: background 120ms ease;
+}
+
+#split-divider.v::after {
+  width: 2px;
+  height: 100%;
+}
+
+#split-divider.h::after {
+  width: 100%;
+  height: 2px;
+}
+
+#split-divider:hover::after,
+#split-divider.dragging::after {
+  background: var(--accent);
+}
+
+/* Apercu pendant le glissement : deux panneaux nommes a la place des vues */
+#drag-preview {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+}
+
+.drag-pane {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border-radius: 6px;
+  color: var(--text-dim);
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+}
+
+/* Ecran de code d'un service protege : cale sur la part du service concerne
+   (position posee par sidebar.js), la sidebar reste accessible. */
 #service-lock {
   position: absolute;
   inset: 0;

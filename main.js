@@ -85,8 +85,11 @@ const store = new Store({
     autostartHidden: false,
     // Correcteur orthographique dans les services.
     spellcheck: true,
-    // Vue partagee : id du service affiche a droite, restaure au lancement.
+    // Vue partagee : service secondaire, cote (droite ou dessous) et position
+    // du separateur, restaures au lancement.
     splitId: null,
+    splitDirection: 'right',
+    splitRatio: 0.5,
     // Verrouillage : code hache (scrypt), jamais en clair.
     lock: { hash: null, salt: null, onSuspend: true, idleMinutes: 0 },
     // id -> true : services qui exigent le code individuellement.
@@ -922,9 +925,12 @@ function setSplitId(id) {
   createApplicationMenu(); // l'etat de "Fermer la vue partagee" change
 }
 
-function setSplit(id) {
+function setSplit(id, direction) {
   const service = getService(id);
-  if (!service || id === activeId || id === splitId) return;
+  if (!service || id === activeId) return;
+
+  if (direction) store.set('splitDirection', direction === 'bottom' ? 'bottom' : 'right');
+  if (id === splitId) return layoutViews(); // meme service, seul le cote change
 
   setSplitId(id);
 
@@ -952,11 +958,23 @@ function closeSplit(reason) {
 }
 
 // ---------------------------------------------------------------------------
-// Layout : la vue active occupe toute la fenetre moins la sidebar, ou la
-// moitie gauche quand la vue partagee est active
+// Layout : la vue active occupe toute la fenetre moins la sidebar, ou une part
+// reglable quand la vue partagee est active (l'autre part revient au service
+// secondaire, a droite ou en dessous selon le reglage)
 // ---------------------------------------------------------------------------
 
-const SPLIT_GAP = 2; // laisse voir le fond de la fenetre entre les deux moities
+// Largeur du separateur entre les deux parts. Cette bande n'est couverte par
+// aucune vue native : la sidebar (le webContents de la fenetre) y reste
+// visible et y recoit la souris, c'est elle qui rend le separateur saisissable.
+const SPLIT_GAP = 6;
+
+/** Dernier layout envoye a la sidebar (repris par le bootstrap du renderer). */
+let lastLayout = null;
+
+function splitRatio() {
+  const ratio = Number(store.get('splitRatio'));
+  return Math.min(0.8, Math.max(0.2, Number.isFinite(ratio) ? ratio : 0.5));
+}
 
 function layoutViews() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -971,20 +989,46 @@ function layoutViews() {
   };
 
   const split = splitId ? views.get(splitId) : null;
-  const leftWidth = split ? Math.floor((area.width - SPLIT_GAP) / 2) : area.width;
+  let activeBounds = area;
+  let splitBounds = null;
+  let divider = null;
+
+  if (split) {
+    if (store.get('splitDirection') === 'bottom') {
+      const top = Math.floor((area.height - SPLIT_GAP) * splitRatio());
+      activeBounds = { ...area, height: top };
+      splitBounds = {
+        x: area.x,
+        y: top + SPLIT_GAP,
+        width: area.width,
+        height: area.height - top - SPLIT_GAP,
+      };
+      divider = { orientation: 'h', pos: top };
+    } else {
+      const left = Math.floor((area.width - SPLIT_GAP) * splitRatio());
+      activeBounds = { ...area, width: left };
+      splitBounds = {
+        x: area.x + left + SPLIT_GAP,
+        y: 0,
+        width: area.width - left - SPLIT_GAP,
+        height: area.height,
+      };
+      divider = { orientation: 'v', pos: left };
+    }
+  }
 
   for (const [id, entry] of views) {
-    entry.view.setBounds(
-      split && id === splitId
-        ? {
-            x: area.x + leftWidth + SPLIT_GAP,
-            y: 0,
-            width: area.width - leftWidth - SPLIT_GAP,
-            height: area.height,
-          }
-        : { ...area, width: leftWidth }
-    );
+    entry.view.setBounds(split && id === splitId ? splitBounds : activeBounds);
   }
+
+  // La sidebar a besoin du decoupage : elle y place le separateur saisissable
+  // et cale l'ecran de code d'un service protege sur la bonne part (les
+  // coordonnees sont relatives a la zone de contenu, sidebar deduite).
+  lastLayout = {
+    active: { width: activeBounds.width, height: activeBounds.height },
+    divider,
+  };
+  send('hub:layout', lastLayout);
 }
 
 function send(channel, payload) {
@@ -1036,6 +1080,25 @@ function isProtected(id) {
 
 function needsCode(id) {
   return Boolean(id) && isProtected(id) && !unlockedIds.has(id);
+}
+
+/** Active ou retire la protection d'un service (reglee dans son formulaire). */
+function setProtection(id, wanted) {
+  const flags = { ...store.get('protected') };
+  const had = Boolean(flags[id]);
+  if (wanted) flags[id] = true;
+  else delete flags[id];
+  store.set('protected', flags);
+
+  if (!wanted) unlockedIds.delete(id);
+  // Le service affiche ne se verrouille pas sous les yeux de celui qui vient
+  // de cocher la case : la protection s'armera au prochain verrouillage.
+  if (wanted && (id === activeId || id === splitId)) unlockedIds.add(id);
+
+  if (wanted !== had) log('lock', `${id} : code ${wanted ? 'exige' : 'non exige'}`);
+
+  // Cocher sans avoir defini de code : on enchaine sur la creation du code.
+  if (wanted && !hasPin()) send('hub:lock-setup', { mode: 'set' });
 }
 
 function lockApp(reason) {
@@ -1744,6 +1807,7 @@ function serviceForRenderer(service) {
     hibernateAfter: Number(service.hibernateAfter) || 0,
     muted: isMuted(service.id),
     hibernating: hibernated.has(service.id),
+    protected: Boolean(store.get('protected')?.[service.id]),
     ...resolveIcon(service),
   };
 }
@@ -1792,6 +1856,14 @@ function saveService(draft) {
     hibernateAfter: Math.max(0, Number(draft.hibernateAfter) || 0),
   };
 
+  // Protection par code : elle se regle dans le formulaire, mais la RETIRER
+  // exige que le service soit deverrouille. Sans ce verrou, n'importe qui
+  // devant l'ecran decocherait la case et ouvrirait le service sans code.
+  const wantsProtection = Boolean(draft.protected);
+  if (existing && !wantsProtection && needsCode(existing.id)) {
+    return { error: t('lock.errorStillLocked') };
+  }
+
   if (existing) {
     const urlChanged = existing.url !== settings.url;
     const spoofChanged = existing.spoofUserAgent !== settings.spoofUserAgent;
@@ -1800,6 +1872,7 @@ function saveService(draft) {
       service.id === existing.id ? { ...service, ...settings } : service
     );
     store.set('services', updated);
+    setProtection(existing.id, wantsProtection);
     log('services', `${existing.id} modifie`);
 
     const entry = views.get(existing.id);
@@ -1823,6 +1896,7 @@ function saveService(draft) {
 
     store.set('services', [...services, service]);
     store.set('order', [...(store.get('order') || []), id]);
+    if (wantsProtection) setProtection(id, true);
     log('services', `${id} cree (${settings.url})`);
   }
 
@@ -1909,6 +1983,8 @@ ipcMain.handle('hub:bootstrap', () => ({
   locked,
   // Le service actif peut deja attendre son code (relancement de l'app).
   activeNeedsCode: needsCode(activeId),
+  // Decoupage courant : position du separateur, taille de la part active.
+  layout: lastLayout,
   // Le renderer est sandboxe : il ne lit pas les fichiers de langue, il recoit
   // le dictionnaire deja resolu.
   strings: i18n.dict(),
@@ -2087,36 +2163,26 @@ ipcMain.on('hub:service-menu', (_e, id) => {
       enabled: Boolean(entry) && id !== activeId && id !== splitId,
       click: () => hibernateService(id, 'demande manuelle'),
     },
-    {
-      label: id === splitId ? t('ctx.splitClose') : t('ctx.split'),
-      // Un service qui attend son code se deverrouille d'abord en vue simple.
-      enabled: id === splitId || (id !== activeId && !needsCode(id)),
-      click: () => (id === splitId ? closeSplit('demande manuelle') : setSplit(id)),
-    },
-    {
-      label: t('ctx.protect'),
-      type: 'checkbox',
-      checked: Boolean(store.get('protected')?.[id]),
-      click: () => {
-        const flags = { ...store.get('protected') };
-        if (flags[id]) delete flags[id];
-        else flags[id] = true;
-        store.set('protected', flags);
-
-        // Le service qu'on regarde ne se verrouille pas sous nos yeux : la
-        // protection s'armera au prochain verrouillage de l'app.
-        if (flags[id] && (id === activeId || id === splitId)) unlockedIds.add(id);
-        if (!flags[id]) unlockedIds.delete(id);
-
-        log('lock', `${id} : code ${flags[id] ? 'exige' : 'non exige'}`);
-
-        // Proteger un service sans avoir de code : on propose d'en definir un.
-        if (flags[id] && !hasPin()) send('hub:lock-setup', { mode: 'set' });
-
-        applyViewVisibility();
-        send('hub:active', { id: activeId, needsCode: needsCode(activeId) });
-      },
-    },
+    // Un service qui attend son code se deverrouille d'abord en vue simple.
+    ...(id === splitId
+      ? [{ label: t('ctx.splitClose'), click: () => closeSplit('demande manuelle') }]
+      : [
+          {
+            label: t('ctx.split'),
+            enabled: id !== activeId && !needsCode(id),
+            click: () => setSplit(id, 'right'),
+          },
+          {
+            label: t('ctx.splitBottom'),
+            enabled: id !== activeId && !needsCode(id),
+            click: () => setSplit(id, 'bottom'),
+          },
+          // Fermeture accessible depuis n'importe quelle tuile : chercher LA
+          // bonne icone pour arreter la vue partagee etait une chasse au tresor.
+          ...(splitId
+            ? [{ label: t('menu.view.splitClose'), click: () => closeSplit('demande manuelle') }]
+            : []),
+        ]),
     { type: 'separator' },
     { label: t('ctx.icon'), click: () => chooseIcon(id) },
     { label: t('ctx.iconDefault'), enabled: Boolean(storedIcon(id)), click: () => resetIcon(id) },
@@ -2162,6 +2228,27 @@ ipcMain.on('hub:overlay', (_e, { dataUrl, description }) => {
 
 ipcMain.on('hub:select', (_e, id) => showService(id));
 ipcMain.on('hub:install-update', installUpdate);
+
+// Reglage du separateur au cliqué-glissé. Pendant le geste les vues sont
+// masquees : ce sont des couches natives, la souris leur appartiendrait des
+// qu'elle les survole et le glissement s'arreterait net au bord du separateur.
+// La sidebar affiche un apercu a la place, et tout revient au relachement.
+ipcMain.on('hub:split-drag', (_e, dragging) => {
+  if (!splitId || locked) return;
+  if (dragging) {
+    for (const entry of views.values()) entry.view.setVisible(false);
+  } else {
+    applyViewVisibility();
+  }
+});
+
+ipcMain.on('hub:split-ratio', (_e, ratio) => {
+  if (typeof ratio === 'number' && Number.isFinite(ratio)) {
+    store.set('splitRatio', Math.min(0.8, Math.max(0.2, ratio)));
+  }
+  layoutViews();
+  applyViewVisibility();
+});
 
 // La vue du service recouvre toute la zone a droite de la sidebar : un
 // formulaire affiche par le renderer serait cache dessous. On escamote donc la

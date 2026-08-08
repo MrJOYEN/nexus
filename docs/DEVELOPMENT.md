@@ -92,12 +92,21 @@ foreground: visible services never sleep.
 
 ## Split view
 
-`splitId` designates a second service laid on the right half of the content
-area; `activeId` keeps the left half and stays "the active service"
-everywhere else (shortcuts, badges, menus). Clicking the tile of the service
-already shown on the right swaps the two halves instead of showing it twice.
-The pair survives restarts (`splitId` is persisted) and split closes itself
-when its service is deleted.
+`splitId` designates a second service laid beside (or below) the active one;
+`activeId` keeps the first part and stays "the active service" everywhere
+else (shortcuts, badges, menus). Clicking the tile of the service already
+split swaps the two parts instead of showing it twice. Direction and ratio
+are persisted along with the pair, and split closes itself when its service
+is deleted.
+
+The 6px band between the two views is not covered by any native layer, so
+the sidebar's own webContents shows through and receives the mouse: that is
+the draggable divider. During a drag the views are hidden and the renderer
+draws two placeholder panes instead, because native views would swallow the
+mouse the moment the pointer crossed them; the real views come back on
+release. Main broadcasts the current layout (`hub:layout`) so the renderer
+can place the divider and size the code screen of a protected service to the
+active part only.
 
 ## App lock
 
@@ -114,13 +123,15 @@ in. Auto-lock listens to `powerMonitor` (`lock-screen`, `suspend`) and polls
 `getSystemIdleTime` every 30 s for the idle timeout, because idleness is not
 an event.
 
-A single service can also require the code on its own (right click, "Require
-the code"). A protected service keeps loading in the background, badges and
-notifications included; only its view stays hidden behind a code screen that
-covers the content area, sidebar still usable. Unlocking lasts until the app
-locks again (`unlockedIds` is cleared by `lockApp`), and the service you are
-currently looking at never locks itself under your eyes when you flip the
-toggle or set the first code.
+A single service can also require the code on its own, from its edit form. A
+protected service keeps loading in the background, badges and notifications
+included; only its view stays hidden behind a code screen sized to its part
+of the window, sidebar still usable. Unlocking lasts until the app locks
+again (`unlockedIds` is cleared by `lockApp`), and the service you are
+currently looking at never locks itself under your eyes when you tick the
+box or set the first code. Unticking the box is refused while the service
+still waits for its code, otherwise anyone at the keyboard could lift the
+protection from the form without ever knowing the code.
 
 ## Spell checking
 

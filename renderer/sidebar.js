@@ -37,6 +37,7 @@ const fields = {
   hibernate: document.getElementById('f-hibernate'),
   spoof: document.getElementById('f-spoof'),
   preload: document.getElementById('f-preload'),
+  protected: document.getElementById('f-protected'),
 };
 
 /** id -> { service, el, status, badge } */
@@ -174,13 +175,132 @@ function setActive(id) {
   refreshOverlay();
 }
 
-/** Service affiche dans la moitie droite : sa tuile porte un liseré accent. */
+/** Service affiche dans la seconde part : sa tuile porte un liseré accent. */
 function setSplit(id) {
   splitId = id;
   for (const [itemId, item] of items) {
     item.el.classList.toggle('split', itemId === id);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Vue partagee : separateur deplacable
+//
+// Le separateur vit dans la bande de 6px que les deux vues natives laissent
+// libre : la sidebar y recoit la souris. Pendant le glissement, les vues sont
+// escamotees cote main (des couches natives avaleraient la souris des le
+// premier survol) et deux panneaux d'apercu prennent leur place.
+// ---------------------------------------------------------------------------
+
+const content = document.getElementById('content');
+const splitDivider = document.getElementById('split-divider');
+const dragPreview = document.getElementById('drag-preview');
+const dragPaneA = document.getElementById('drag-pane-a');
+const dragPaneB = document.getElementById('drag-pane-b');
+
+const GAP = 6; // doit rester synchro avec SPLIT_GAP dans main.js
+
+/** Dernier decoupage recu de main ({ active, divider }). */
+let contentLayout = null;
+let dividerDragging = false;
+let dragRatio = null;
+
+function applyLayout(layout) {
+  contentLayout = layout || null;
+  const divider = contentLayout?.divider;
+
+  if (!divider) {
+    splitDivider.classList.add('hidden');
+  } else {
+    splitDivider.classList.remove('hidden');
+    splitDivider.classList.toggle('v', divider.orientation === 'v');
+    splitDivider.classList.toggle('h', divider.orientation === 'h');
+
+    if (divider.orientation === 'v') {
+      Object.assign(splitDivider.style, {
+        left: `${divider.pos}px`,
+        top: '0',
+        width: `${GAP}px`,
+        height: '100%',
+      });
+    } else {
+      Object.assign(splitDivider.style, {
+        left: '0',
+        top: `${divider.pos}px`,
+        width: '100%',
+        height: `${GAP}px`,
+      });
+    }
+  }
+
+  positionServiceLock();
+}
+
+function updateDragPreview() {
+  const rect = content.getBoundingClientRect();
+  const vertical = contentLayout.divider.orientation === 'v';
+  const total = Math.max(1, (vertical ? rect.width : rect.height) - GAP);
+  const ratio = dragRatio ?? contentLayout.divider.pos / total;
+  const pos = Math.floor(total * ratio);
+
+  if (vertical) {
+    Object.assign(dragPaneA.style, { left: '0', top: '0', width: `${pos}px`, height: '100%' });
+    Object.assign(dragPaneB.style, {
+      left: `${pos + GAP}px`,
+      top: '0',
+      width: `${rect.width - pos - GAP}px`,
+      height: '100%',
+    });
+    Object.assign(splitDivider.style, { left: `${pos}px`, top: '0' });
+  } else {
+    Object.assign(dragPaneA.style, { left: '0', top: '0', width: '100%', height: `${pos}px` });
+    Object.assign(dragPaneB.style, {
+      left: '0',
+      top: `${pos + GAP}px`,
+      width: '100%',
+      height: `${rect.height - pos - GAP}px`,
+    });
+    Object.assign(splitDivider.style, { left: '0', top: `${pos}px` });
+  }
+}
+
+splitDivider.addEventListener('mousedown', (event) => {
+  if (!contentLayout?.divider) return;
+  event.preventDefault();
+
+  dividerDragging = true;
+  dragRatio = null;
+  splitDivider.classList.add('dragging');
+  window.hub.splitDrag(true);
+
+  dragPaneA.textContent = items.get(activeId)?.service.name || '';
+  dragPaneB.textContent = items.get(splitId)?.service.name || '';
+  dragPreview.classList.remove('hidden');
+  updateDragPreview();
+});
+
+document.addEventListener('mousemove', (event) => {
+  if (!dividerDragging) return;
+
+  const rect = content.getBoundingClientRect();
+  const vertical = contentLayout.divider.orientation === 'v';
+  const total = Math.max(1, (vertical ? rect.width : rect.height) - GAP);
+  const pos = vertical ? event.clientX - rect.left : event.clientY - rect.top;
+
+  dragRatio = Math.min(0.8, Math.max(0.2, pos / total));
+  updateDragPreview();
+});
+
+document.addEventListener('mouseup', () => {
+  if (!dividerDragging) return;
+
+  dividerDragging = false;
+  splitDivider.classList.remove('dragging');
+  dragPreview.classList.add('hidden');
+  // dragRatio reste null sur un simple clic : main relayoute a l'identique et
+  // reaffiche les vues.
+  window.hub.setSplitRatio(dragRatio);
+});
 
 function setStatus(id, status, message) {
   const item = items.get(id);
@@ -664,6 +784,7 @@ function openForm(service) {
     fields.hibernate.value = String(service.hibernateAfter ?? 0);
     fields.spoof.checked = Boolean(service.spoofUserAgent);
     fields.preload.checked = service.preload !== false;
+    fields.protected.checked = Boolean(service.protected);
 
     const index = [...items.keys()].indexOf(service.id);
     previewSlot.textContent =
@@ -683,6 +804,7 @@ function openForm(service) {
     fields.hibernate.value = '0';
     fields.spoof.checked = false;
     fields.preload.checked = true;
+    fields.protected.checked = false;
 
     previewSlot.textContent = t('form.slotEnd');
     searchInput.value = '';
@@ -716,6 +838,7 @@ form.addEventListener('submit', async (event) => {
     hibernateAfter: Number(fields.hibernate.value),
     spoofUserAgent: fields.spoof.checked,
     preload: fields.preload.checked,
+    protected: fields.protected.checked,
   });
 
   if (result?.error) {
@@ -820,20 +943,53 @@ lockForm.addEventListener('submit', async (event) => {
 // Ecran de code d'un service protege (la sidebar reste utilisable).
 const serviceLock = document.getElementById('service-lock');
 const serviceLockForm = document.getElementById('service-lock-form');
-const serviceLockAvatar = document.getElementById('service-lock-avatar');
+const serviceLockLogo = document.getElementById('service-lock-logo');
 const serviceLockTitle = document.getElementById('service-lock-title');
 const serviceLockPin = document.getElementById('service-lock-pin');
 const serviceLockError = document.getElementById('service-lock-error');
+
+/**
+ * En vue partagee, l'ecran de code se cale sur la part du service actif : la
+ * vue de l'autre part est une couche native qui recouvrirait un ecran centre
+ * sur toute la zone.
+ */
+function positionServiceLock() {
+  const active = contentLayout?.active;
+  Object.assign(serviceLock.style, {
+    left: '0',
+    top: '0',
+    width: active ? `${active.width}px` : '100%',
+    height: active ? `${active.height}px` : '100%',
+  });
+}
 
 function showServiceLock(id) {
   const item = items.get(id);
   if (!item) return;
 
-  serviceLockAvatar.textContent = item.service.initials;
-  serviceLockAvatar.style.setProperty('--service-color', item.service.color);
+  // Meme icone que la sidebar : celle choisie par l'utilisateur, sinon la
+  // favicon, sinon les initiales colorees.
+  const icon = item.el.querySelector('.avatar img');
+  const img = serviceLockLogo.querySelector('img');
+  const text = serviceLockLogo.querySelector('span');
+
+  serviceLockLogo.style.setProperty('background', item.service.color || '#45475a');
+  text.textContent = item.service.initials || '';
+
+  if (icon && !icon.hidden && icon.src) {
+    img.src = icon.src;
+    img.hidden = false;
+    serviceLockLogo.classList.add('has-img');
+  } else {
+    img.removeAttribute('src');
+    img.hidden = true;
+    serviceLockLogo.classList.remove('has-img');
+  }
+
   serviceLockTitle.textContent = t('serviceLock.title', { name: item.service.name });
   serviceLockPin.value = '';
   serviceLockError.classList.add('hidden');
+  positionServiceLock();
   serviceLock.classList.remove('hidden');
   serviceLockPin.focus();
 }
@@ -1067,6 +1223,7 @@ function startOnboarding() {
   splitId = boot.splitId || null;
   renderSidebar(boot.services);
   if (boot.activeId) setActive(boot.activeId);
+  if (boot.layout) applyLayout(boot.layout);
   if (boot.activeNeedsCode) showServiceLock(boot.activeId);
   if (boot.splitId) setSplit(boot.splitId);
   showUpdate(boot.update);
@@ -1085,6 +1242,7 @@ function startOnboarding() {
     else hideServiceLock();
   });
   window.hub.onSplit(({ id }) => setSplit(id));
+  window.hub.onLayout(applyLayout);
   window.hub.onBadge(({ id, count }) => setBadge(id, count));
   window.hub.onIcon(({ id, dataUrl, source }) => setIcon(id, dataUrl, source));
   window.hub.onOrder(({ order }) => applyOrder(order));

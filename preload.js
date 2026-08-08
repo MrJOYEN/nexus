@@ -75,8 +75,17 @@ contextBridge.exposeInMainWorld('hub', {
   /** { id, needsCode } - le service actif a change (clic sidebar, raccourci, tray). */
   onActive: (callback) => on('hub:active', callback),
 
-  /** { id } - le service affiche dans la moitie droite (null = vue simple). */
+  /** { id } - le service affiche dans la seconde part (null = vue simple). */
   onSplit: (callback) => on('hub:split', callback),
+
+  /** { active, divider } - decoupage courant de la zone de contenu. */
+  onLayout: (callback) => on('hub:layout', callback),
+
+  /** Debut / fin du glissement du separateur (les vues sont escamotees). */
+  splitDrag: (dragging) => ipcRenderer.send('hub:split-drag', dragging),
+
+  /** Nouveau ratio du separateur (0.2 a 0.8), null pour annuler le geste. */
+  setSplitRatio: (ratio) => ipcRenderer.send('hub:split-ratio', ratio),
 
   /** { id, count } - count > 0 : compteur, -1 : pastille sans nombre, 0 : rien. */
   onBadge: (callback) => on('hub:badge', callback),

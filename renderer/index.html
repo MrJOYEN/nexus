@@ -37,11 +37,22 @@
         </div>
       </div>
 
-      <!-- Ecran de code d'un service protege : occupe la zone de contenu, la
-           sidebar reste utilisable pour passer a un autre service. -->
+      <!-- Separateur de la vue partagee : vit dans la bande que les deux vues
+           natives laissent libre, se deplace au cliqué-glissé. -->
+      <div id="split-divider" class="hidden"></div>
+
+      <!-- Apercu pendant le glissement du separateur : les vraies vues sont
+           escamotees (couches natives, elles avaleraient la souris). -->
+      <div id="drag-preview" class="hidden">
+        <div class="drag-pane" id="drag-pane-a"></div>
+        <div class="drag-pane" id="drag-pane-b"></div>
+      </div>
+
+      <!-- Ecran de code d'un service protege : cale sur la part du service
+           concerne, la sidebar reste utilisable pour passer ailleurs. -->
       <div id="service-lock" class="hidden">
         <form id="service-lock-form" autocomplete="off">
-          <div class="overlay-avatar" id="service-lock-avatar">--</div>
+          <span class="logo lg" id="service-lock-logo"><img alt="" hidden /><span></span></span>
           <h1 id="service-lock-title"></h1>
           <p class="lock-hint" data-i18n="serviceLock.hint">Enter the code to open this service.</p>
           <input
@@ -140,6 +151,14 @@
             <span>
               <span data-i18n="form.preload">Load at startup</span>
               <small data-i18n="form.preloadHint">Without it, no badge and no notification until you first open it.</small>
+            </span>
+          </label>
+
+          <label class="check">
+            <input id="f-protected" type="checkbox" />
+            <span>
+              <span data-i18n="form.protected">Require the lock code</span>
+              <small data-i18n="form.protectedHint">Hides this service behind the app lock code until it is entered.</small>
             </span>
           </label>
 
