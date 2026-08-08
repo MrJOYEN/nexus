@@ -105,6 +105,7 @@ const CATALOG = [
   { name: 'Intercom', url: 'https://app.intercom.com', color: '#1F8DED', initials: 'IC', category: 'business', icon: 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://intercom.com&size=128' },
   { name: 'Crisp', url: 'https://app.crisp.chat', color: '#1972F5', initials: 'CR', category: 'business' },
   { name: 'Brevo', url: 'https://app.brevo.com', color: '#0B996E', initials: 'BV', category: 'business', icon: 'https://icons.duckduckgo.com/ip3/www.brevo.com.ico' },
+  { name: 'Redof', url: 'https://app.redof.fr', color: '#2563EB', initials: 'RD', category: 'business' },
 ];
 
 module.exports = { CATALOG };

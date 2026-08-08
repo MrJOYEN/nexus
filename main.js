@@ -832,16 +832,23 @@ function send(channel, payload) {
  * branche sur la sidebar ET sur chaque vue de service.
  */
 function handleShortcut(event, input) {
-  if (input.type !== 'keyDown' || !input.control) return;
+  // input.alt exclut AltGr : sur un clavier AZERTY, AltGr est envoye comme
+  // Ctrl+Alt, et taper ~ # { [ dans un service declencherait nos raccourcis.
+  if (input.type !== 'keyDown' || !input.control || input.alt) return;
 
   const key = (input.key || '').toLowerCase();
   const activeEntry = views.get(activeId);
   const services = orderedServices();
 
-  // Ctrl+1..9 : switch de service, dans l'ordre affiche par la sidebar
-  const digit = Number(key);
+  // Ctrl+1..9 : switch de service, dans l'ordre affiche par la sidebar.
+  // On lit la POSITION de la touche (input.code, Digit1..Digit9), pas le
+  // caractere produit : sur un AZERTY la rangee du haut donne & é " ' ( - è _ ç
+  // sans Shift, et comparer input.key a un chiffre ne matchait jamais.
+  const digitMatch = /^(?:Digit|Numpad)([1-9])$/.exec(input.code || '');
+  const digit = digitMatch ? Number(digitMatch[1]) : NaN;
   if (!input.shift && digit >= 1 && digit <= Math.min(9, services.length)) {
     event.preventDefault();
+    log('shortcut', `Ctrl+${digit} -> ${services[digit - 1].id}`);
     showService(services[digit - 1].id);
     return;
   }

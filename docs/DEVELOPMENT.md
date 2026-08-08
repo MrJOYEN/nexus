@@ -176,6 +176,11 @@ it creates its profile.
 - **Menu accelerators.** App shortcuts are handled in `before-input-event`
   on the sidebar and on every service view. Menu items display their shortcut
   with `registerAccelerator: false`; otherwise each keypress fires twice.
+- **Keyboard layouts.** Match digits on `input.code` (`Digit1`..`Digit9`),
+  never on `input.key`: an AZERTY top row produces `& é "` without Shift, so
+  `Ctrl+1` never carries the character "1". And ignore events with
+  `input.alt` set, because AZERTY's AltGr arrives as Ctrl+Alt and typing
+  `~ # { [` inside a service would trigger the shortcuts.
 - **Native layers win.** A `WebContentsView` sits above the page, so nothing
   the sidebar draws can overlap it. Tooltips are native `title` attributes,
   and the active view is hidden while the add form is open.
