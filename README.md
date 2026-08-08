@@ -10,7 +10,7 @@ Nexus is a lightweight desktop hub for Windows. Each service runs in its own
 isolated session, side by side in a single window, with native notifications
 and unread counters.
 
-![The Nexus window: services in the sidebar with unread badges, a messaging service and a calendar side by side in split view](docs/hero.svg)
+![The Nexus window: services in the sidebar with unread badges, a messaging service and a calendar side by side in split view](docs/hero.png)
 
 ## Why
 
