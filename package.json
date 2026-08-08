@@ -38,12 +38,12 @@
     "productName": "Nexus",
     "directories": {
       "output": "dist",
-      "buildResources": "assets"
+      "buildResources": "installer"
     },
     "files": [
       "**/*",
       "!assets/brand/**",
-      "!assets/*.bmp",
+      "!installer/**",
       "!docs/**",
       "!**/*.md",
       "!.*"
@@ -57,7 +57,7 @@
           ]
         }
       ],
-      "icon": "assets/icon.ico"
+      "icon": "installer/icon.ico"
     },
     "nsis": {
       "oneClick": false,

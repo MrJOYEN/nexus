@@ -16,7 +16,8 @@ catalog-icons.js   fetching and caching of catalogue logos
 images.js          image format sniffing and ICO/WebP helpers
 i18n.js            translations, loaded in the main process only
 locales/           en.json (reference), fr.json, es.json
-assets/            app icon, installer artwork (brand sources in assets/brand)
+assets/            app icon used at runtime (brand sources in assets/brand)
+installer/         electron-builder buildResources: exe icon, installer artwork
 ```
 
 The window is a `BrowserWindow` whose own webContents renders the sidebar.
@@ -209,6 +210,13 @@ shipped without newly added modules and died on startup. New files must ship
 by default. After touching packaging, do not trust a green build: run
 `dist/win-unpacked/Nexus.exe` with a scratch `--user-data-dir` and check that
 it creates its profile.
+
+Related trap: electron-builder silently excludes the `buildResources`
+directory from the packaged app. It once pointed at `assets/`, so the
+installer built fine and the app ran, but `assets/icon.ico` did not exist at
+runtime: blank tray icon, no logo on the onboarding and lock screens. Hence
+the split: `assets/` ships with the app, `installer/` (buildResources) feeds
+electron-builder only, and the icon exists in both.
 
 ## Development tips
 
