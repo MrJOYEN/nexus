@@ -98,7 +98,15 @@ const store = new Store({
 
 /** Complete un service stocke avec les valeurs par defaut. */
 function withDefaults(service) {
-  return { ...SERVICE_DEFAULTS, ...service };
+  const merged = { ...SERVICE_DEFAULTS, ...service };
+
+  // Un service sans partition (config ecrite par une version intermediaire, ou
+  // editee a la main) recupere la partition conventionnelle liee a son id.
+  // Sans ce filet, session.fromPartition(undefined) fait tomber l'app au
+  // demarrage, et la config fautive replante a chaque lancement.
+  if (!merged.partition && merged.id) merged.partition = `persist:${merged.id}`;
+
+  return merged;
 }
 
 /**

@@ -955,7 +955,17 @@ async function obSetLanguage(code) {
 }
 
 async function obFinish(drafts) {
-  const result = await window.hub.completeOnboarding(drafts);
+  let result;
+  try {
+    result = await window.hub.completeOnboarding(drafts);
+  } catch (err) {
+    // Main injoignable ou handler en echec : on rend le bouton, plutot que de
+    // laisser un onboarding fige qui ne repond plus a rien.
+    console.error('[onboarding] echec :', err);
+    obRefreshStart();
+    return;
+  }
+
   onboarding.classList.add('hidden');
   console.log(`[onboarding] termine : ${result?.count ?? 0} service(s)`);
 
