@@ -1,6 +1,7 @@
 {
   "menu.file": "File",
   "menu.file.new": "New service…",
+  "menu.file.spellcheck": "Spell check",
   "menu.file.autostart": "Start with Windows",
   "menu.file.autostartHidden": "Start hidden in the tray",
   "menu.file.hide": "Hide to tray",
@@ -51,6 +52,7 @@
   "ctx.iconDefault": "Default icon",
   "ctx.up": "Move up",
   "ctx.down": "Move down",
+  "ctx.addToDictionary": "Add to dictionary",
   "ctx.reload": "Reload",
   "ctx.devtools": "Developer tools",
   "delete.title": "Delete service",

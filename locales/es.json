@@ -1,6 +1,7 @@
 {
   "menu.file": "Archivo",
   "menu.file.new": "Nuevo servicio…",
+  "menu.file.spellcheck": "Corrector ortográfico",
   "menu.file.autostart": "Iniciar con Windows",
   "menu.file.autostartHidden": "Iniciar oculto en la bandeja",
   "menu.file.hide": "Ocultar en la bandeja",
@@ -51,6 +52,7 @@
   "ctx.iconDefault": "Icono por defecto",
   "ctx.up": "Subir",
   "ctx.down": "Bajar",
+  "ctx.addToDictionary": "Añadir al diccionario",
   "ctx.reload": "Recargar",
   "ctx.devtools": "Herramientas de desarrollo",
   "delete.title": "Eliminar el servicio",

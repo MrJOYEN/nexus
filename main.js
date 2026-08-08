@@ -77,6 +77,8 @@ const store = new Store({
     // Lancement avec Windows, et demarrage masque dans la zone de notification.
     autostart: false,
     autostartHidden: false,
+    // Correcteur orthographique dans les services.
+    spellcheck: true,
   },
 });
 
@@ -245,7 +247,40 @@ function getServiceSession(service) {
   // Repond a Notification.permission / navigator.permissions.query() sans prompt.
   ses.setPermissionCheckHandler((_wc, permission) => allows(permission));
 
+  applySpellchecker(ses);
+
   return ses;
+}
+
+// ---------------------------------------------------------------------------
+// Correcteur orthographique
+//
+// Le correcteur est celui de Chromium ; les dictionnaires sont telecharges a la
+// demande dans le profil. On corrige dans la langue de l'interface, avec
+// l'anglais en plus : c'est dans ces langues qu'on ecrit ses messages. Les
+// suggestions s'affichent via le menu contextuel pose sur chaque vue.
+// ---------------------------------------------------------------------------
+
+function spellcheckerLanguages(ses) {
+  const ui = { en: 'en-US', fr: 'fr', es: 'es' }[i18n.current()] || 'en-US';
+  const available = new Set(ses.availableSpellCheckerLanguages);
+  return [...new Set([ui, 'en-US'])].filter((code) => available.has(code));
+}
+
+function applySpellchecker(ses) {
+  const enabled = store.get('spellcheck') !== false;
+  ses.setSpellCheckerEnabled(enabled);
+  if (!enabled) return;
+
+  const languages = spellcheckerLanguages(ses);
+  if (languages.length) ses.setSpellCheckerLanguages(languages);
+}
+
+/** A rejouer quand la langue de l'interface ou le reglage change. */
+function applySpellcheckerEverywhere() {
+  for (const partition of configuredPartitions) {
+    applySpellchecker(session.fromPartition(partition));
+  }
 }
 
 /** Aligne navigator.userAgent sur l'en-tete HTTP (a rejouer apres edition). */
@@ -572,6 +607,40 @@ function createServiceView(service) {
   // dom-ready plutot que did-finish-load : on veut envelopper Notification avant
   // que le site n'en garde une reference.
   wc.on('dom-ready', () => applyMuteState(entry));
+
+  // Menu contextuel dans les zones de saisie : c'est la que vivent les
+  // suggestions du correcteur. Ailleurs on ne fait rien — beaucoup de webapps
+  // (Discord, Notion) dessinent leur propre menu, inutile d'en superposer un.
+  wc.on('context-menu', (_e, params) => {
+    if (!params.isEditable) return;
+
+    const template = [];
+
+    for (const suggestion of (params.dictionarySuggestions || []).slice(0, 5)) {
+      template.push({ label: suggestion, click: () => wc.replaceMisspelling(suggestion) });
+    }
+
+    if (params.misspelledWord) {
+      template.push(
+        {
+          label: t('ctx.addToDictionary'),
+          click: () => wc.session.addWordToSpellCheckerDictionary(params.misspelledWord),
+        },
+        { type: 'separator' }
+      );
+    }
+
+    // Appels explicites sur wc plutot que des roles : un role agit sur le
+    // webContents qui a le focus, pas forcement celui du clic.
+    template.push(
+      { label: t('menu.edit.cut'), enabled: params.editFlags.canCut, click: () => wc.cut() },
+      { label: t('menu.edit.copy'), enabled: params.editFlags.canCopy, click: () => wc.copy() },
+      { label: t('menu.edit.paste'), enabled: params.editFlags.canPaste, click: () => wc.paste() },
+      { label: t('menu.edit.selectAll'), click: () => wc.selectAll() }
+    );
+
+    Menu.buildFromTemplate(template).popup({ window: mainWindow });
+  });
 
   wc.on('did-finish-load', () => setStatus(entry, 'ready'));
 
@@ -1135,6 +1204,16 @@ function createApplicationMenu() {
             })),
           ],
         },
+        {
+          label: t('menu.file.spellcheck'),
+          type: 'checkbox',
+          checked: store.get('spellcheck') !== false,
+          click: () => {
+            store.set('spellcheck', store.get('spellcheck') === false);
+            applySpellcheckerEverywhere();
+            createApplicationMenu();
+          },
+        },
         { type: 'separator' },
         {
           label: t('menu.file.autostart'),
@@ -1251,6 +1330,7 @@ function setLanguage(preference) {
   createApplicationMenu();
   refreshTrayMenu();
   refreshTrayTooltip();
+  applySpellcheckerEverywhere(); // la langue de correction suit celle de l'interface
   send('hub:language', { strings: i18n.dict(), language: applied, preference });
 }
 
