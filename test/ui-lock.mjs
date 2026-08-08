@@ -62,18 +62,30 @@ const ids = await evalJs(`[...items.keys()]`);
 check('2 services crees', Array.isArray(ids) && ids.length === 2, JSON.stringify(ids));
 const [first, second] = ids;
 
-// --- 2. Proteger le service 2 depuis son formulaire (sans code defini) ------
+// --- 2. Proteger le service 2 : bouton du formulaire, creation du code ------
 await evalJs(`openForm(items.get('${second}').service)`);
 check('formulaire ouvert', await visible('#modal'));
-await evalJs(`(() => { fields.protected.checked = true; document.getElementById('service-form').requestSubmit(); })()`);
-await sleep(800);
-check('formulaire ferme apres save', !(await visible('#modal')));
-check('formulaire du code ouvert (regression modal-sous-vues)', await visible('#lock-setup'));
+check('bouton de protection visible', await visible('#protect-row'));
+await evalJs(`document.getElementById('f-protect').click()`);
+await sleep(600);
+check('fenetre de creation du code ouverte', await visible('#lock-setup'));
+check('formulaire toujours ouvert derriere', await visible('#modal'));
 
-// --- 3. Definir le code 1234 ------------------------------------------------
+// Saisies discordantes : refus, l'option ne s'active pas.
+await evalJs(`(() => { lockFields.next.value = '1234'; lockFields.confirm.value = '9999'; document.getElementById('lock-setup-form').requestSubmit(); })()`);
+await sleep(600);
+check('codes discordants refuses', await visible('#lock-setup-error'));
+
+// --- 3. Creation du code 1234 : l'option s'active, retour au formulaire -----
 await evalJs(`(() => { lockFields.next.value = '1234'; lockFields.confirm.value = '1234'; document.getElementById('lock-setup-form').requestSubmit(); })()`);
 await sleep(800);
-check('formulaire du code ferme', !(await visible('#lock-setup')));
+check('fenetre du code fermee', !(await visible('#lock-setup')));
+check('retour sur le formulaire du service', await visible('#modal'));
+check(
+  'bouton passe en "ne plus demander"',
+  await evalJs(`document.getElementById('f-protect').textContent === t('form.protectOff')`)
+);
+await evalJs(`closeForm()`);
 
 // --- 4. Ouvrir le service protege : ecran de code du service ----------------
 await evalJs(`window.hub.select('${second}')`);
@@ -104,12 +116,22 @@ check('le service protege redemande son code', await visible('#service-lock'));
 await evalJs(`(() => { serviceLockPin.value = '1234'; serviceLockForm.requestSubmit(); })()`);
 await sleep(400);
 
-// --- 7. Decocher la protection : refuse tant que verrouille -----------------
-// (ici il est deverrouille, donc ca doit passer)
+// --- 7. Desactiver la protection : le code est exige --------------------------
 await evalJs(`openForm(items.get('${second}').service)`);
-await evalJs(`(() => { fields.protected.checked = false; document.getElementById('service-form').requestSubmit(); })()`);
+await evalJs(`document.getElementById('f-protect').click()`);
 await sleep(600);
-check('protection retiree apres deverrouillage', !(await visible('#modal')));
+check('desactivation : fenetre de code ouverte', await visible('#lock-setup'));
+await evalJs(`(() => { lockFields.current.value = '0000'; document.getElementById('lock-setup-form').requestSubmit(); })()`);
+await sleep(600);
+check('desactivation au mauvais code refusee', await visible('#lock-setup-error'));
+await evalJs(`(() => { lockFields.current.value = '1234'; document.getElementById('lock-setup-form').requestSubmit(); })()`);
+await sleep(600);
+check('desactivation au bon code acceptee', !(await visible('#lock-setup')));
+check(
+  'bouton revenu en "demander le code"',
+  await evalJs(`document.getElementById('f-protect').textContent === t('form.protectOn')`)
+);
+await evalJs(`closeForm()`);
 
 console.log(failures ? `${failures} echec(s)` : 'TOUT PASSE');
 process.exit(failures ? 1 : 0);

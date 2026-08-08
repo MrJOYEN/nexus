@@ -1084,7 +1084,7 @@ function needsCode(id) {
   return Boolean(id) && isProtected(id) && !unlockedIds.has(id);
 }
 
-/** Active ou retire la protection d'un service (reglee dans son formulaire). */
+/** Active ou retire la protection d'un service (via hub:service-protect). */
 function setProtection(id, wanted) {
   const flags = { ...store.get('protected') };
   const had = Boolean(flags[id]);
@@ -1094,13 +1094,10 @@ function setProtection(id, wanted) {
 
   if (!wanted) unlockedIds.delete(id);
   // Le service affiche ne se verrouille pas sous les yeux de celui qui vient
-  // de cocher la case : la protection s'armera au prochain verrouillage.
+  // d'activer l'option : la protection s'armera au prochain verrouillage.
   if (wanted && (id === activeId || id === splitId)) unlockedIds.add(id);
 
   if (wanted !== had) log('lock', `${id} : code ${wanted ? 'exige' : 'non exige'}`);
-
-  // Cocher sans avoir defini de code : on enchaine sur la creation du code.
-  if (wanted && !hasPin()) send('hub:lock-setup', { mode: 'set' });
 }
 
 function lockApp(reason) {
@@ -1868,14 +1865,6 @@ function saveService(draft) {
     hibernateAfter: Math.max(0, Number(draft.hibernateAfter) || 0),
   };
 
-  // Protection par code : elle se regle dans le formulaire, mais la RETIRER
-  // exige que le service soit deverrouille. Sans ce verrou, n'importe qui
-  // devant l'ecran decocherait la case et ouvrirait le service sans code.
-  const wantsProtection = Boolean(draft.protected);
-  if (existing && !wantsProtection && needsCode(existing.id)) {
-    return { error: t('lock.errorStillLocked') };
-  }
-
   if (existing) {
     const urlChanged = existing.url !== settings.url;
     const spoofChanged = existing.spoofUserAgent !== settings.spoofUserAgent;
@@ -1884,7 +1873,6 @@ function saveService(draft) {
       service.id === existing.id ? { ...service, ...settings } : service
     );
     store.set('services', updated);
-    setProtection(existing.id, wantsProtection);
     log('services', `${existing.id} modifie`);
 
     const entry = views.get(existing.id);
@@ -1908,7 +1896,6 @@ function saveService(draft) {
 
     store.set('services', [...services, service]);
     store.set('order', [...(store.get('order') || []), id]);
-    if (wantsProtection) setProtection(id, true);
     log('services', `${id} cree (${settings.url})`);
   }
 
@@ -2040,6 +2027,42 @@ ipcMain.handle('hub:unlock-service', (_e, { id, pin } = {}) => {
   const entry = views.get(id);
   if (entry && entry.status !== 'error' && id === activeId) entry.view.webContents.focus();
   return { ok: true };
+});
+
+/** La sidebar a parfois besoin de savoir si un code existe (choix du mode). */
+ipcMain.handle('hub:lock-state', () => ({ hasPin: hasPin() }));
+
+/**
+ * Activation / desactivation de la protection d'un service, depuis le bouton
+ * de son formulaire. Chaque bascule se prouve : creation du code (deux
+ * saisies) s'il n'en existe pas encore, saisie du code sinon. C'est ce qui
+ * empeche de retirer la protection sans le connaitre.
+ */
+ipcMain.handle('hub:service-protect', (_e, draft) => {
+  const { id, enable } = draft || {};
+  const service = getService(id);
+  if (!service) return { error: t('error.serviceMissing') };
+
+  if (enable && !hasPin()) {
+    if ((draft.next || '').length < 4) return { error: t('lock.errorShort') };
+    if (draft.next !== draft.confirm) return { error: t('lock.errorMismatch') };
+
+    const salt = crypto.randomBytes(16).toString('hex');
+    store.set('lock', { ...store.get('lock'), hash: hashPin(draft.next, salt), salt });
+    log('lock', 'code defini');
+  } else if (!verifyPin(draft.code)) {
+    log('lock', `${id} : code errone (bascule de protection)`);
+    return { error: t('lock.wrong') };
+  }
+
+  setProtection(id, Boolean(enable));
+
+  applyViewVisibility();
+  if (id === activeId) send('hub:active', { id, needsCode: needsCode(id) });
+  broadcastServices(); // le drapeau protected des services a change
+  createApplicationMenu(); // et hasPin() a pu changer
+
+  return { ok: true, protected: Boolean(enable) };
 });
 
 /** Definition, changement ou suppression du code, depuis le formulaire dedie. */

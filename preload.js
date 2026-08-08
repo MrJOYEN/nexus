@@ -41,6 +41,12 @@ contextBridge.exposeInMainWorld('hub', {
   /** Deverrouille un seul service protege -> { ok } ou { error }. */
   unlockService: (id, pin) => ipcRenderer.invoke('hub:unlock-service', { id, pin }),
 
+  /** Un code est-il defini ? -> { hasPin }. */
+  lockState: () => ipcRenderer.invoke('hub:lock-state'),
+
+  /** Bascule la protection d'un service -> { ok, protected } ou { error }. */
+  protectService: (draft) => ipcRenderer.invoke('hub:service-protect', draft),
+
   /** Definit, change ou supprime le code -> { ok } ou { error }. */
   configureLock: (draft) => ipcRenderer.invoke('hub:lock-config', draft),
 

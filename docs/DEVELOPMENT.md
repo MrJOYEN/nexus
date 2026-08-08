@@ -123,15 +123,20 @@ in. Auto-lock listens to `powerMonitor` (`lock-screen`, `suspend`) and polls
 `getSystemIdleTime` every 30 s for the idle timeout, because idleness is not
 an event.
 
-A single service can also require the code on its own, from its edit form. A
-protected service keeps loading in the background, badges and notifications
-included; only its view stays hidden behind a code screen sized to its part
-of the window, sidebar still usable. Unlocking lasts until the app locks
-again (`unlockedIds` is cleared by `lockApp`), and the service you are
-currently looking at never locks itself under your eyes when you tick the
-box or set the first code. Unticking the box is refused while the service
-still waits for its code, otherwise anyone at the keyboard could lift the
-protection from the form without ever knowing the code.
+A single service can also require the code on its own, from a button in its
+edit form. The toggle is not a checkbox, it is a proof: enabling opens the
+code window (creation with two entries if no code exists yet, plain entry
+otherwise), disabling asks for the code again, and the option only flips
+when the code is right. Both paths land back on the form. That is what
+prevents anyone at the keyboard from lifting the protection without knowing
+the code.
+
+A protected service keeps loading in the background, badges and
+notifications included; only its view stays hidden behind a code screen
+sized to its part of the window, sidebar still usable. Unlocking lasts until
+the app locks again (`unlockedIds` is cleared by `lockApp`), and the service
+you are currently looking at never locks itself under your eyes when you
+enable the option or set the first code.
 
 ## Spell checking
 

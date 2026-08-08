@@ -8,3 +8,6 @@ npm-debug.log*
 Thumbs.db
 .env
 .vscode/
+
+# Documents de travail internes, jamais publies
+docs/POSITIONING.md

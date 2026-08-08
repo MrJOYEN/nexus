@@ -37,8 +37,12 @@ const fields = {
   hibernate: document.getElementById('f-hibernate'),
   spoof: document.getElementById('f-spoof'),
   preload: document.getElementById('f-preload'),
-  protected: document.getElementById('f-protected'),
 };
+
+const protectRow = document.getElementById('protect-row');
+const protectButton = document.getElementById('f-protect');
+/** Etat de protection du service en cours d'edition. */
+let formProtected = false;
 
 /** id -> { service, el, status, badge } */
 const items = new Map();
@@ -797,7 +801,12 @@ function openForm(service) {
     fields.hibernate.value = String(service.hibernateAfter ?? 0);
     fields.spoof.checked = Boolean(service.spoofUserAgent);
     fields.preload.checked = service.preload !== false;
-    fields.protected.checked = Boolean(service.protected);
+
+    // Le bouton de protection n'existe qu'en edition : sur un service pas
+    // encore cree, il n'y a rien a proteger.
+    formProtected = Boolean(service.protected);
+    protectRow.classList.remove('hidden');
+    refreshProtectButton();
 
     const index = [...items.keys()].indexOf(service.id);
     previewSlot.textContent =
@@ -817,7 +826,7 @@ function openForm(service) {
     fields.hibernate.value = '0';
     fields.spoof.checked = false;
     fields.preload.checked = true;
-    fields.protected.checked = false;
+    protectRow.classList.add('hidden');
 
     previewSlot.textContent = t('form.slotEnd');
     searchInput.value = '';
@@ -851,7 +860,6 @@ form.addEventListener('submit', async (event) => {
     hibernateAfter: Number(fields.hibernate.value),
     spoofUserAgent: fields.spoof.checked,
     preload: fields.preload.checked,
-    protected: fields.protected.checked,
   });
 
   if (result?.error) {
@@ -925,6 +933,27 @@ const lockFields = {
   confirm: document.getElementById('lock-confirm'),
 };
 let lockMode = null;
+/** Bascule de protection en attente : { serviceId, enable }, sinon null. */
+let lockIntent = null;
+
+function refreshProtectButton() {
+  protectButton.textContent = formProtected ? t('form.protectOff') : t('form.protectOn');
+}
+
+// Le bouton du formulaire : chaque bascule passe par la fenetre de code.
+// Activation sans code existant -> creation (deux saisies). Activation avec
+// code, ou desactivation -> saisie du code. L'option ne change que si le code
+// est bon, et on retombe sur le formulaire dans tous les cas.
+protectButton.addEventListener('click', async () => {
+  if (!editingId) return;
+
+  const enable = !formProtected;
+  const { hasPin } = await window.hub.lockState();
+  openLockSetup(enable ? (hasPin ? 'enable' : 'set') : 'disable', {
+    serviceId: editingId,
+    enable,
+  });
+});
 
 function setLocked(isLocked) {
   lockscreen.classList.toggle('hidden', !isLocked);
@@ -1026,16 +1055,21 @@ serviceLockForm.addEventListener('submit', async (event) => {
   hideServiceLock();
 });
 
-function openLockSetup(mode) {
+function openLockSetup(mode, intent) {
   lockMode = mode;
+  lockIntent = intent || null;
   lockSetupTitle.textContent = t(`lock.title.${mode}`);
 
-  // 'set' : pas encore de code, donc pas de champ "code actuel".
-  // 'remove' : seul le code actuel est demande.
+  // 'set' : creation du code, deux saisies, pas de champ "code actuel".
+  // 'change' : les trois champs.
+  // 'remove', 'enable', 'disable' : seule la saisie du code.
+  const codeOnly = mode === 'remove' || mode === 'enable' || mode === 'disable';
   document.getElementById('lock-current-field').classList.toggle('hidden', mode === 'set');
-  document.getElementById('lock-new-field').classList.toggle('hidden', mode === 'remove');
-  document.getElementById('lock-confirm-field').classList.toggle('hidden', mode === 'remove');
-  lockSetupSave.textContent = mode === 'remove' ? t('lock.removeConfirm') : t('form.save');
+  document.getElementById('lock-new-field').classList.toggle('hidden', codeOnly);
+  document.getElementById('lock-confirm-field').classList.toggle('hidden', codeOnly);
+  document.querySelector('#lock-setup .lock-hint').classList.toggle('hidden', codeOnly);
+  lockSetupSave.textContent =
+    mode === 'remove' ? t('lock.removeConfirm') : codeOnly ? t('lock.confirmAction') : t('form.save');
 
   for (const field of Object.values(lockFields)) field.value = '';
   lockSetupError.classList.add('hidden');
@@ -1047,23 +1081,39 @@ function openLockSetup(mode) {
 function closeLockSetup() {
   lockSetup.classList.add('hidden');
   lockMode = null;
+  lockIntent = null;
   syncModalState();
 }
 
 lockSetupForm.addEventListener('submit', async (event) => {
   event.preventDefault();
 
-  const result = await window.hub.configureLock({
-    mode: lockMode,
-    current: lockFields.current.value,
-    next: lockFields.next.value,
-    confirm: lockFields.confirm.value,
-  });
+  // Bascule de protection d'un service : la fenetre de code sert de preuve,
+  // et on retombe sur le formulaire du service dans tous les cas.
+  const result = lockIntent
+    ? await window.hub.protectService({
+        id: lockIntent.serviceId,
+        enable: lockIntent.enable,
+        code: lockFields.current.value,
+        next: lockFields.next.value,
+        confirm: lockFields.confirm.value,
+      })
+    : await window.hub.configureLock({
+        mode: lockMode,
+        current: lockFields.current.value,
+        next: lockFields.next.value,
+        confirm: lockFields.confirm.value,
+      });
 
   if (result?.error) {
     lockSetupError.textContent = result.error;
     lockSetupError.classList.remove('hidden');
     return;
+  }
+
+  if (lockIntent) {
+    formProtected = Boolean(result.protected);
+    refreshProtectButton();
   }
 
   closeLockSetup();
@@ -1276,6 +1326,7 @@ function startOnboarding() {
     applyTranslations();
     refreshShortcutLabels();
     if (!modal.classList.contains('hidden')) renderCatalog(searchInput.value);
+    if (editingId) refreshProtectButton();
     if (activeId) refreshOverlay();
   });
 })();

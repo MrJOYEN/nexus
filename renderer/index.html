@@ -154,13 +154,14 @@
             </span>
           </label>
 
-          <label class="check">
-            <input id="f-protected" type="checkbox" />
-            <span>
-              <span data-i18n="form.protected">Require the lock code</span>
-              <small data-i18n="form.protectedHint">Hides this service behind the app lock code until it is entered.</small>
-            </span>
-          </label>
+          <!-- La protection ne se coche pas : elle se prouve. Le bouton ouvre
+               la fenetre de code (creation ou saisie), et l'option ne bascule
+               que si le code est bon. Visible en edition seulement. -->
+          <div class="field hidden" id="protect-row">
+            <span data-i18n="form.protected">Require the lock code</span>
+            <button type="button" id="f-protect"></button>
+            <small data-i18n="form.protectedHint">Hides this service behind the app lock code until it is entered.</small>
+          </div>
 
           <p id="form-error" class="hidden"></p>
 
