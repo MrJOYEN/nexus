@@ -45,6 +45,7 @@
       "!assets/brand/**",
       "!installer/**",
       "!docs/**",
+      "!test/**",
       "!**/*.md",
       "!.*"
     ],

@@ -762,6 +762,19 @@ for (const field of [fields.name, fields.initials, fields.color]) {
   field.addEventListener('input', refreshPreview);
 }
 
+/**
+ * Le formulaire de service et celui du code de verrouillage sont deux modales
+ * independantes, mais l'escamotage des vues natives est un etat unique cote
+ * main. Chacune signale donc l'etat GLOBAL a la fermeture : fermer l'une
+ * pendant que l'autre est ouverte ne doit pas remettre les vues au premier
+ * plan par-dessus la modale restante.
+ */
+function syncModalState() {
+  const anyOpen =
+    !modal.classList.contains('hidden') || !lockSetup.classList.contains('hidden');
+  window.hub.setModalOpen(anyOpen);
+}
+
 function openForm(service) {
   editingId = service ? service.id : null;
   pickedIcon = service?.dataUrl || null;
@@ -814,14 +827,14 @@ function openForm(service) {
   refreshPreview();
   modal.classList.remove('hidden');
   // Sans ca le formulaire resterait cache derriere la vue du service.
-  window.hub.setModalOpen(true);
+  syncModalState();
   (service ? fields.name : searchInput).focus();
 }
 
 function closeForm() {
   modal.classList.add('hidden');
   modal.classList.remove('picked');
-  window.hub.setModalOpen(false);
+  syncModalState();
   editingId = null;
   pickedIcon = null;
 }
@@ -1027,14 +1040,14 @@ function openLockSetup(mode) {
   for (const field of Object.values(lockFields)) field.value = '';
   lockSetupError.classList.add('hidden');
   lockSetup.classList.remove('hidden');
-  window.hub.setModalOpen(true);
+  syncModalState();
   (mode === 'set' ? lockFields.next : lockFields.current).focus();
 }
 
 function closeLockSetup() {
   lockSetup.classList.add('hidden');
   lockMode = null;
-  window.hub.setModalOpen(false);
+  syncModalState();
 }
 
 lockSetupForm.addEventListener('submit', async (event) => {

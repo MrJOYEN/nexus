@@ -927,7 +927,9 @@ function setSplitId(id) {
 
 function setSplit(id, direction) {
   const service = getService(id);
-  if (!service || id === activeId) return;
+  // Un service qui attend son code ne va pas en part partagee : elle n'a pas
+  // d'ecran de code. Il se deverrouille d'abord en vue simple.
+  if (!service || id === activeId || needsCode(id)) return;
 
   if (direction) store.set('splitDirection', direction === 'bottom' ? 'bottom' : 'right');
   if (id === splitId) return layoutViews(); // meme service, seul le cote change
@@ -1117,10 +1119,20 @@ function lockApp(reason) {
 
 function unlockApp() {
   locked = false;
+
+  // Un service protege re-arme par le verrouillage ne peut pas rester en part
+  // partagee : cette part n'a pas d'ecran de code, elle resterait juste vide.
+  if (needsCode(splitId)) closeSplit('service protege re-verrouille');
+
   applyViewVisibility();
   log('lock', 'deverrouille');
   send('hub:lock', { locked: false });
-  views.get(activeId)?.view.webContents.focus();
+
+  // Le service actif peut avoir ete re-arme lui aussi : la sidebar doit alors
+  // remontrer son ecran de code, sinon la zone reste vide.
+  send('hub:active', { id: activeId, needsCode: needsCode(activeId) });
+  if (!needsCode(activeId)) views.get(activeId)?.view.webContents.focus();
+
   createApplicationMenu();
 }
 
@@ -2228,6 +2240,8 @@ ipcMain.on('hub:overlay', (_e, { dataUrl, description }) => {
 
 ipcMain.on('hub:select', (_e, id) => showService(id));
 ipcMain.on('hub:install-update', installUpdate);
+// Meme action que Ctrl+L ou le menu Fichier, offerte au renderer.
+ipcMain.on('hub:lock-now', () => lockApp('demande du renderer'));
 
 // Reglage du separateur au cliqué-glissé. Pendant le geste les vues sont
 // masquees : ce sont des couches natives, la souris leur appartiendrait des

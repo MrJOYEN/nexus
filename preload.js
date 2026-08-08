@@ -32,6 +32,9 @@ contextBridge.exposeInMainWorld('hub', {
   /** Change la langue -> { strings, language, preference }. */
   setLanguage: (preference) => ipcRenderer.invoke('hub:set-language', preference),
 
+  /** Verrouille l'app (equivalent de Ctrl+L), sans effet si aucun code. */
+  lockNow: () => ipcRenderer.send('hub:lock-now'),
+
   /** Tente de deverrouiller avec le code saisi -> { ok } ou { error }. */
   unlock: (pin) => ipcRenderer.invoke('hub:unlock', pin),
 

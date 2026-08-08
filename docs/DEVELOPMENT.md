@@ -229,6 +229,24 @@ runtime: blank tray icon, no logo on the onboarding and lock screens. Hence
 the split: `assets/` ships with the app, `installer/` (buildResources) feeds
 electron-builder only, and the icon exists in both.
 
+## UI testing
+
+`test/ui-lock.mjs` drives the whole lock journey through the Chrome DevTools
+Protocol (no dependency, Node 22's native WebSocket): onboarding, protecting
+a service from its form, setting the code, wrong and right codes, global
+lock, re-arming after unlock. Run it against a scratch profile:
+
+```bash
+npx electron . --user-data-dir="%TEMP%\nexus-uitest" --remote-debugging-port=9224
+node test/ui-lock.mjs 9224
+```
+
+Two harness limits to know: CDP-injected keystrokes never reach
+`before-input-event`, so app shortcuts (Ctrl+L, Ctrl+digit) cannot be tested
+this way — the test calls the same action through IPC instead. And the test
+clicks catalogue tiles by index; it deliberately avoids Discord, which
+triggers a Windows passkey prompt on some machines.
+
 ## Development tips
 
 - **Isolated profile.** Dev and the installed app share `%APPDATA%\Nexus`
