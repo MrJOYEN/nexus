@@ -32,6 +32,18 @@ contextBridge.exposeInMainWorld('hub', {
   /** Change la langue -> { strings, language, preference }. */
   setLanguage: (preference) => ipcRenderer.invoke('hub:set-language', preference),
 
+  /** Tente de deverrouiller avec le code saisi -> { ok } ou { error }. */
+  unlock: (pin) => ipcRenderer.invoke('hub:unlock', pin),
+
+  /** Definit, change ou supprime le code -> { ok } ou { error }. */
+  configureLock: (draft) => ipcRenderer.invoke('hub:lock-config', draft),
+
+  /** { locked } - l'app vient de se verrouiller ou deverrouiller. */
+  onLock: (callback) => on('hub:lock', callback),
+
+  /** { mode: 'set' | 'change' | 'remove' } - le menu demande le formulaire de code. */
+  onLockSetup: (callback) => on('hub:lock-setup', callback),
+
   /** { strings, language } - la langue a change depuis le menu. */
   onLanguage: (callback) => on('hub:language', callback),
 

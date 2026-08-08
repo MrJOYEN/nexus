@@ -136,6 +136,60 @@
       </div>
     </main>
 
+    <!-- Formulaire du code de verrouillage (definir / changer / supprimer),
+         ouvert depuis le menu Fichier. La vue du service est escamotee pendant
+         qu'il est visible, comme pour le formulaire de service. -->
+    <div id="lock-setup" class="hidden">
+      <form id="lock-setup-form" autocomplete="off">
+        <h1 id="lock-setup-title"></h1>
+        <p class="lock-hint" data-i18n="lock.hint">
+          Locks the window behind a code. Data on disk stays readable outside Nexus:
+          this is a privacy screen, not encryption.
+        </p>
+
+        <label class="field" id="lock-current-field">
+          <span data-i18n="lock.current">Current code</span>
+          <input id="lock-current" type="password" maxlength="64" />
+        </label>
+
+        <label class="field" id="lock-new-field">
+          <span data-i18n="lock.new">New code (at least 4 characters)</span>
+          <input id="lock-new" type="password" maxlength="64" />
+        </label>
+
+        <label class="field" id="lock-confirm-field">
+          <span data-i18n="lock.confirmField">Confirm the code</span>
+          <input id="lock-confirm" type="password" maxlength="64" />
+        </label>
+
+        <p id="lock-setup-error" class="hidden"></p>
+
+        <div class="form-actions">
+          <span class="spacer"></span>
+          <button type="button" id="lock-setup-cancel" data-i18n="form.cancel">Cancel</button>
+          <button type="submit" class="primary" id="lock-setup-save"></button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Ecran de verrouillage : par-dessus tout, sidebar comprise. Les vues de
+         service sont masquees cote main tant qu'il est affiche. -->
+    <div id="lockscreen" class="hidden">
+      <form id="lock-form" autocomplete="off">
+        <img class="lock-logo" src="../assets/icon.ico" alt="" />
+        <h1 data-i18n="lock.locked">Nexus is locked</h1>
+        <input
+          id="lock-pin"
+          type="password"
+          maxlength="64"
+          placeholder="Code"
+          data-i18n-placeholder="lock.placeholder"
+        />
+        <p id="lock-error" class="hidden"></p>
+        <button type="submit" data-i18n="lock.unlock">Unlock</button>
+      </form>
+    </div>
+
     <!-- Onboarding du premier lancement : par-dessus tout, sidebar comprise.
          Etape 1, la langue ; etape 2, les services depuis le catalogue. -->
     <div id="onboarding" class="hidden">

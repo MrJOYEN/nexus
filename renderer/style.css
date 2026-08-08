@@ -579,6 +579,108 @@ body {
   display: none;
 }
 
+/* ------------------------------------------------------------ verrouillage -- */
+
+/* L'ecran de code recouvre tout, sidebar comprise : rien de l'app ne doit
+   rester cliquable tant que le code n'est pas saisi. */
+#lockscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: var(--content-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#lock-form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: 250px;
+  text-align: center;
+}
+
+.lock-logo {
+  width: 64px;
+  height: 64px;
+  margin-bottom: 4px;
+}
+
+#lock-form h1 {
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+#lock-form input[type="password"] {
+  text-align: center;
+  font-size: 15px;
+  letter-spacing: 0.25em;
+}
+
+#lock-form button {
+  width: 100%;
+  padding: 10px 22px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--accent);
+  color: #11111b;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#lock-form button:hover {
+  filter: brightness(1.1);
+}
+
+#lock-setup {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: var(--content-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  overflow-y: auto;
+}
+
+#lock-setup-form {
+  width: 100%;
+  max-width: 390px;
+  background: var(--surface);
+  border: 1px solid var(--divider);
+  border-radius: 12px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+#lock-setup-form h1 {
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.lock-hint {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+#lock-error,
+#lock-setup-error {
+  padding: 9px 11px;
+  border-radius: 6px;
+  background: rgba(229, 72, 77, 0.12);
+  color: #f38ba8;
+  font-size: 12px;
+}
+
 /* -------------------------------------------------------------- onboarding -- */
 
 #onboarding {
@@ -820,6 +922,7 @@ body {
 }
 
 input[type="text"],
+input[type="password"],
 select {
   width: 100%;
   padding: 9px 11px;
@@ -838,6 +941,7 @@ select {
 }
 
 input[type="text"]:focus,
+input[type="password"]:focus,
 select:focus {
   outline: none;
   border-color: var(--accent);

@@ -1,6 +1,7 @@
 'use strict';
 
 const path = require('node:path');
+const crypto = require('node:crypto');
 const {
   app,
   BrowserWindow,
@@ -13,6 +14,7 @@ const {
   ipcMain,
   clipboard,
   nativeImage,
+  powerMonitor,
 } = require('electron');
 const Store = require('electron-store');
 const { autoUpdater } = require('electron-updater');
@@ -51,6 +53,8 @@ let tray = null;
 let activeId = null;
 // Service affiche dans la moitie droite quand la vue partagee est active.
 let splitId = null;
+// Fenetre verrouillee : vues masquees, ecran de code par-dessus tout.
+let locked = false;
 let isQuitting = false;
 // Demarrage masque avec une fenetre qui etait maximisee : maximize() afficherait
 // la fenetre, on note l'etat et on l'applique au premier vrai affichage.
@@ -83,6 +87,8 @@ const store = new Store({
     spellcheck: true,
     // Vue partagee : id du service affiche a droite, restaure au lancement.
     splitId: null,
+    // Verrouillage : code hache (scrypt), jamais en clair.
+    lock: { hash: null, salt: null, onSuspend: true, idleMinutes: 0 },
   },
 });
 
@@ -766,7 +772,7 @@ function setStatus(entry, status, message) {
 
   // En erreur la vue est masquee : l'overlay "Reessayer" du renderer principal
   // devient visible dessous.
-  if (entry.service.id === activeId || entry.service.id === splitId) {
+  if (!locked && (entry.service.id === activeId || entry.service.id === splitId)) {
     entry.view.setVisible(status !== 'error');
   }
 
@@ -851,7 +857,7 @@ function scheduleHibernation(entry) {
 
 function showService(id) {
   const service = getService(id);
-  if (!service) return;
+  if (!service || locked) return;
 
   const previousId = activeId;
 
@@ -885,7 +891,9 @@ function showService(id) {
 /** Seuls le service actif et celui de la moitie droite sont visibles. */
 function applyViewVisibility() {
   for (const [id, entry] of views) {
-    entry.view.setVisible((id === activeId || id === splitId) && entry.status !== 'error');
+    entry.view.setVisible(
+      !locked && (id === activeId || id === splitId) && entry.status !== 'error'
+    );
   }
 }
 
@@ -973,6 +981,54 @@ function send(channel, payload) {
 }
 
 // ---------------------------------------------------------------------------
+// Verrouillage
+//
+// Un ecran de code par-dessus la fenetre, pas du chiffrement : les donnees sur
+// le disque restent lisibles hors de Nexus. Le code est hache (scrypt + sel),
+// jamais stocke en clair. Code oublie : supprimer la section "lock" de
+// %APPDATA%\Nexus\config.json, les services restent connectes.
+// ---------------------------------------------------------------------------
+
+function hashPin(pin, salt) {
+  return crypto.scryptSync(String(pin), salt, 32).toString('hex');
+}
+
+function hasPin() {
+  return Boolean(store.get('lock')?.hash);
+}
+
+function verifyPin(pin) {
+  const lock = store.get('lock') || {};
+  if (!lock.hash || !lock.salt) return false;
+
+  const candidate = Buffer.from(hashPin(pin || '', lock.salt), 'hex');
+  const expected = Buffer.from(lock.hash, 'hex');
+  return candidate.length === expected.length && crypto.timingSafeEqual(candidate, expected);
+}
+
+function lockApp(reason) {
+  if (locked || !hasPin()) return;
+
+  locked = true;
+  // Les vues sont des couches natives au-dessus du renderer : sans ca, l'ecran
+  // de verrouillage resterait cache sous le service affiche.
+  for (const entry of views.values()) entry.view.setVisible(false);
+
+  log('lock', `verrouille (${reason})`);
+  send('hub:lock', { locked: true });
+  createApplicationMenu(); // "Verrouiller" se desactive
+}
+
+function unlockApp() {
+  locked = false;
+  applyViewVisibility();
+  log('lock', 'deverrouille');
+  send('hub:lock', { locked: false });
+  views.get(activeId)?.view.webContents.focus();
+  createApplicationMenu();
+}
+
+// ---------------------------------------------------------------------------
 // Raccourcis clavier
 // ---------------------------------------------------------------------------
 
@@ -986,6 +1042,9 @@ function handleShortcut(event, input) {
   // input.alt exclut AltGr : sur un clavier AZERTY, AltGr est envoye comme
   // Ctrl+Alt, et taper ~ # { [ dans un service declencherait nos raccourcis.
   if (input.type !== 'keyDown' || !input.control || input.alt) return;
+
+  // Verrouille, l'app ne repond plus qu'a l'ecran de code.
+  if (locked) return;
 
   const key = (input.key || '').toLowerCase();
   const activeEntry = views.get(activeId);
@@ -1034,6 +1093,12 @@ function handleShortcut(event, input) {
   if (key === ',' && !input.shift) {
     event.preventDefault();
     mainWindow.webContents.toggleDevTools();
+    return;
+  }
+
+  if (key === 'l' && !input.shift) {
+    event.preventDefault();
+    lockApp('raccourci'); // sans code defini, ne fait rien
     return;
   }
 
@@ -1308,6 +1373,48 @@ function createApplicationMenu() {
             applyAutostart();
             createApplicationMenu();
           },
+        },
+        { type: 'separator' },
+        {
+          label: t('menu.file.lock'),
+          ...shown('CommandOrControl+L'),
+          enabled: hasPin() && !locked,
+          click: () => lockApp('menu'),
+        },
+        {
+          label: t('menu.file.lockMenu'),
+          submenu: [
+            {
+              label: hasPin() ? t('menu.file.lockChange') : t('menu.file.lockSet'),
+              click: () => send('hub:lock-setup', { mode: hasPin() ? 'change' : 'set' }),
+            },
+            {
+              label: t('menu.file.lockRemove'),
+              enabled: hasPin(),
+              click: () => send('hub:lock-setup', { mode: 'remove' }),
+            },
+            { type: 'separator' },
+            {
+              label: t('menu.file.lockOnSuspend'),
+              type: 'checkbox',
+              enabled: hasPin(),
+              checked: store.get('lock')?.onSuspend !== false,
+              click: () => {
+                store.set('lock.onSuspend', store.get('lock')?.onSuspend === false);
+                createApplicationMenu();
+              },
+            },
+            {
+              label: t('menu.file.lockIdle'),
+              submenu: [0, 5, 15, 30].map((minutes) => ({
+                label: minutes ? t('menu.file.lockIdleAfter', { minutes }) : t('form.sleep.never'),
+                type: 'radio',
+                enabled: hasPin(),
+                checked: (Number(store.get('lock')?.idleMinutes) || 0) === minutes,
+                click: () => store.set('lock.idleMinutes', minutes),
+              })),
+            },
+          ],
         },
         { type: 'separator' },
         { label: t('menu.file.hide'), click: () => mainWindow?.hide() },
@@ -1765,6 +1872,7 @@ ipcMain.handle('hub:bootstrap', () => ({
   splitId,
   version: app.getVersion(),
   onboarding: needsOnboarding(),
+  locked,
   // Le renderer est sandboxe : il ne lit pas les fichiers de langue, il recoit
   // le dictionnaire deja resolu.
   strings: i18n.dict(),
@@ -1781,6 +1889,41 @@ ipcMain.handle('hub:bootstrap', () => ({
 
 ipcMain.handle('hub:service-save', (_e, draft) => saveService(draft || {}));
 ipcMain.handle('hub:service-delete', (_e, id) => deleteService(id));
+
+/** Tentative de deverrouillage depuis l'ecran de code. */
+ipcMain.handle('hub:unlock', (_e, pin) => {
+  if (!locked) return { ok: true };
+  if (!verifyPin(pin)) {
+    log('lock', 'code errone');
+    return { error: t('lock.wrong') };
+  }
+  unlockApp();
+  return { ok: true };
+});
+
+/** Definition, changement ou suppression du code, depuis le formulaire dedie. */
+ipcMain.handle('hub:lock-config', (_e, draft) => {
+  const { mode, current, next, confirm } = draft || {};
+
+  // Toute modification exige le code en place : le formulaire ne suffit pas.
+  if (hasPin() && !verifyPin(current)) return { error: t('lock.errorCurrent') };
+
+  if (mode === 'remove') {
+    store.set('lock', { ...store.get('lock'), hash: null, salt: null });
+    log('lock', 'code supprime');
+    createApplicationMenu();
+    return { ok: true };
+  }
+
+  if ((next || '').length < 4) return { error: t('lock.errorShort') };
+  if (next !== confirm) return { error: t('lock.errorMismatch') };
+
+  const salt = crypto.randomBytes(16).toString('hex');
+  store.set('lock', { ...store.get('lock'), hash: hashPin(next, salt), salt });
+  log('lock', 'code defini');
+  createApplicationMenu();
+  return { ok: true };
+});
 
 /**
  * Fin d'onboarding : cree les services choisis dans l'ordre du clic, puis
@@ -1939,6 +2082,8 @@ ipcMain.on('hub:install-update', installUpdate);
 // formulaire affiche par le renderer serait cache dessous. On escamote donc la
 // vue active le temps que la boite de dialogue est ouverte.
 ipcMain.on('hub:modal', (_e, open) => {
+  if (locked) return; // les vues restent masquees tant que l'ecran de code est la
+
   if (open) {
     for (const entry of views.values()) entry.view.setVisible(false);
   } else {
@@ -1976,6 +2121,20 @@ app.whenReady().then(() => {
   createTray();
   setupUpdater();
   applyAutostart(); // aligne l'entree Windows sur la config a chaque demarrage
+
+  // Verrouillage automatique. lockApp ne fait rien tant qu'aucun code n'est
+  // defini. L'inactivite est sondee : powerMonitor ne la notifie pas.
+  const lockOnSuspend = () => {
+    if (store.get('lock')?.onSuspend !== false) lockApp('session Windows verrouillee');
+  };
+  powerMonitor.on('lock-screen', lockOnSuspend);
+  powerMonitor.on('suspend', lockOnSuspend);
+  setInterval(() => {
+    const minutes = Number(store.get('lock')?.idleMinutes) || 0;
+    if (minutes > 0 && powerMonitor.getSystemIdleTime() >= minutes * 60) {
+      lockApp(`${minutes} min d'inactivite`);
+    }
+  }, 30000);
 
   // Prechargement des vignettes du catalogue : la grille doit etre chaude avant
   // que le formulaire ne s'ouvre. Pendant l'onboarding elle est visible tout de

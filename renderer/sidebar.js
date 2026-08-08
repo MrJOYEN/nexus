@@ -743,7 +743,16 @@ formBack.addEventListener('click', () => {
 document.getElementById('form-cancel').addEventListener('click', closeForm);
 
 document.addEventListener('keydown', (event) => {
-  if (event.key !== 'Escape' || modal.classList.contains('hidden')) return;
+  if (event.key !== 'Escape') return;
+
+  // Le formulaire du code de verrouillage se ferme aussi par Echap. L'ecran de
+  // verrouillage, lui, ne se ferme jamais autrement que par le bon code.
+  if (!lockSetup.classList.contains('hidden')) {
+    closeLockSetup();
+    return;
+  }
+
+  if (modal.classList.contains('hidden')) return;
   // Echap recule d'un cran plutot que de tout fermer : on ne perd pas sa
   // recherche parce qu'on s'est trompe de service.
   if (!editingId && modal.classList.contains('picked')) {
@@ -756,6 +765,102 @@ document.addEventListener('keydown', (event) => {
 
 addButton.addEventListener('click', () => openForm(null));
 updateButton.addEventListener('click', () => window.hub.installUpdate());
+
+// ---------------------------------------------------------------------------
+// Verrouillage
+//
+// L'ecran de code recouvre tout ; les vues de service sont masquees cote main
+// tant qu'il est affiche. La verification du code se fait cote main, jamais ici.
+// ---------------------------------------------------------------------------
+
+const lockscreen = document.getElementById('lockscreen');
+const lockForm = document.getElementById('lock-form');
+const lockPin = document.getElementById('lock-pin');
+const lockError = document.getElementById('lock-error');
+
+const lockSetup = document.getElementById('lock-setup');
+const lockSetupForm = document.getElementById('lock-setup-form');
+const lockSetupTitle = document.getElementById('lock-setup-title');
+const lockSetupSave = document.getElementById('lock-setup-save');
+const lockSetupError = document.getElementById('lock-setup-error');
+const lockFields = {
+  current: document.getElementById('lock-current'),
+  next: document.getElementById('lock-new'),
+  confirm: document.getElementById('lock-confirm'),
+};
+let lockMode = null;
+
+function setLocked(isLocked) {
+  lockscreen.classList.toggle('hidden', !isLocked);
+  if (!isLocked) return;
+
+  // Un formulaire ouvert au moment du verrouillage se ferme : il resterait
+  // invisible sous l'ecran de code, dans un etat incoherent.
+  if (!modal.classList.contains('hidden')) closeForm();
+  if (!lockSetup.classList.contains('hidden')) closeLockSetup();
+
+  lockPin.value = '';
+  lockError.classList.add('hidden');
+  lockPin.focus();
+}
+
+lockForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+
+  const result = await window.hub.unlock(lockPin.value);
+  if (result?.error) {
+    lockError.textContent = result.error;
+    lockError.classList.remove('hidden');
+    lockPin.value = '';
+    lockPin.focus();
+  }
+  // Le succes arrive par hub:lock { locked: false } : rien a faire ici.
+});
+
+function openLockSetup(mode) {
+  lockMode = mode;
+  lockSetupTitle.textContent = t(`lock.title.${mode}`);
+
+  // 'set' : pas encore de code, donc pas de champ "code actuel".
+  // 'remove' : seul le code actuel est demande.
+  document.getElementById('lock-current-field').classList.toggle('hidden', mode === 'set');
+  document.getElementById('lock-new-field').classList.toggle('hidden', mode === 'remove');
+  document.getElementById('lock-confirm-field').classList.toggle('hidden', mode === 'remove');
+  lockSetupSave.textContent = mode === 'remove' ? t('lock.removeConfirm') : t('form.save');
+
+  for (const field of Object.values(lockFields)) field.value = '';
+  lockSetupError.classList.add('hidden');
+  lockSetup.classList.remove('hidden');
+  window.hub.setModalOpen(true);
+  (mode === 'set' ? lockFields.next : lockFields.current).focus();
+}
+
+function closeLockSetup() {
+  lockSetup.classList.add('hidden');
+  lockMode = null;
+  window.hub.setModalOpen(false);
+}
+
+lockSetupForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+
+  const result = await window.hub.configureLock({
+    mode: lockMode,
+    current: lockFields.current.value,
+    next: lockFields.next.value,
+    confirm: lockFields.confirm.value,
+  });
+
+  if (result?.error) {
+    lockSetupError.textContent = result.error;
+    lockSetupError.classList.remove('hidden');
+    return;
+  }
+
+  closeLockSetup();
+});
+
+document.getElementById('lock-setup-cancel').addEventListener('click', closeLockSetup);
 
 function showUpdate(update) {
   if (!update) return;
@@ -914,6 +1019,7 @@ function startOnboarding() {
   if (boot.activeId) setActive(boot.activeId);
   if (boot.splitId) setSplit(boot.splitId);
   showUpdate(boot.update);
+  if (boot.locked) setLocked(true);
   if (boot.onboarding) startOnboarding();
 
   console.log(
@@ -934,6 +1040,8 @@ function startOnboarding() {
     if (item) openForm(item.service);
   });
   window.hub.onNewService(() => openForm(null));
+  window.hub.onLock(({ locked }) => setLocked(locked));
+  window.hub.onLockSetup(({ mode }) => openLockSetup(mode));
   window.hub.onUpdate(showUpdate);
   window.hub.onLanguage(({ strings: dict, language }) => {
     // Changement depuis le menu Fichier : on retraduit sur place, sans recharger.
