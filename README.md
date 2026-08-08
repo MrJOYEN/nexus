@@ -2,9 +2,15 @@
 
 One window for all the web apps you keep open all day.
 
+[![Latest release](https://img.shields.io/github/v/release/MrJOYEN/nexus)](https://github.com/MrJOYEN/nexus/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/MrJOYEN/nexus/total)](https://github.com/MrJOYEN/nexus/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 Nexus is a lightweight desktop hub for Windows. Each service runs in its own
 isolated session, side by side in a single window, with native notifications
 and unread counters.
+
+![The Nexus window: services in the sidebar with unread badges, a messaging service and a calendar side by side in split view](docs/hero.svg)
 
 ## Why
 
@@ -26,8 +32,8 @@ Discord accounts and anything else. They never sign each other out.
 - Native Windows notifications, with per-service mute (sound included)
 - Unread badges in the sidebar, on the taskbar icon and on the tray icon
 - A catalogue of popular services with their real logos, plus any custom URL
-- Split view: a second service on the right half of the window
-- App lock: a code over the whole window or over single services
+- Split view: two services side by side or stacked, with a draggable divider
+- App lock with a code, plus a personal code per service, asked at every opening
 - Drag and drop ordering, keyboard shortcuts, close to tray
 - Per-service sleep to free memory, manual or automatic
 - Spell checking as you type, following the interface language

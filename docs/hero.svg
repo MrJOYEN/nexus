@@ -1,0 +1,145 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" font-family="Segoe UI, system-ui, sans-serif">
+  <!-- Maquette de la fenetre Nexus pour le README : vue partagee, badges,
+       contenu squelette. Aucun vrai contenu, aucune marque. -->
+  <defs>
+    <filter id="shadow" x="-8%" y="-8%" width="116%" height="120%">
+      <feDropShadow dx="0" dy="14" stdDeviation="22" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+    <clipPath id="window">
+      <rect x="40" y="28" width="1200" height="664" rx="14"/>
+    </clipPath>
+  </defs>
+
+  <!-- Fenetre -->
+  <rect x="40" y="28" width="1200" height="664" rx="14" fill="#11111b" filter="url(#shadow)"/>
+  <g clip-path="url(#window)">
+    <!-- Barre de titre -->
+    <rect x="40" y="28" width="1200" height="38" fill="#181825"/>
+    <circle cx="70" cy="47" r="6" fill="#89b4fa"/>
+    <text x="84" y="52" font-size="13" font-weight="600" fill="#cdd6f4">Nexus</text>
+    <g stroke="#6c7086" stroke-width="1.6">
+      <line x1="1160" y1="47" x2="1172" y2="47"/>
+      <rect x="1190" y="41" width="12" height="12" fill="none"/>
+      <line x1="1218" y1="41" x2="1230" y2="53"/>
+      <line x1="1230" y1="41" x2="1218" y2="53"/>
+    </g>
+
+    <!-- Sidebar -->
+    <rect x="40" y="66" width="76" height="626" fill="#1e1e2e"/>
+    <rect x="114" y="66" width="2" height="626" fill="#45475a"/>
+
+    <!-- Tuile active (barre accent a gauche) -->
+    <rect x="40" y="86" width="3" height="32" rx="1.5" fill="#89b4fa"/>
+    <rect x="54" y="78" width="48" height="48" rx="14" fill="#25D366"/>
+    <text x="78" y="108" font-size="14" font-weight="700" fill="#ffffff" text-anchor="middle">WA</text>
+    <!-- Badge 3 -->
+    <circle cx="102" cy="84" r="10" fill="#e5484d" stroke="#1e1e2e" stroke-width="2"/>
+    <text x="102" y="88.5" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+
+    <rect x="54" y="142" width="48" height="48" rx="14" fill="#25D366" opacity="0.85"/>
+    <text x="78" y="172" font-size="14" font-weight="700" fill="#ffffff" text-anchor="middle">WB</text>
+    <circle cx="102" cy="148" r="10" fill="#e5484d" stroke="#1e1e2e" stroke-width="2"/>
+    <text x="102" y="152.5" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+
+    <rect x="54" y="206" width="48" height="48" rx="14" fill="#5865F2"/>
+    <text x="78" y="236" font-size="14" font-weight="700" fill="#ffffff" text-anchor="middle">DC</text>
+    <circle cx="100" cy="214" r="6" fill="#e5484d" stroke="#1e1e2e" stroke-width="2"/>
+
+    <rect x="54" y="270" width="48" height="48" rx="14" fill="#EA4335" opacity="0.9"/>
+    <text x="78" y="300" font-size="14" font-weight="700" fill="#ffffff" text-anchor="middle">GM</text>
+
+    <!-- Tuile de la vue partagee : lisere accent -->
+    <rect x="54" y="334" width="48" height="48" rx="14" fill="#4285F4" stroke="#89b4fa" stroke-width="2.5"/>
+    <text x="78" y="364" font-size="14" font-weight="700" fill="#ffffff" text-anchor="middle">GC</text>
+
+    <!-- Bouton + -->
+    <rect x="60" y="620" width="38" height="38" rx="11" fill="none" stroke="#45475a" stroke-width="1.6" stroke-dasharray="4 4"/>
+    <text x="79" y="646" font-size="20" fill="#6c7086" text-anchor="middle">+</text>
+
+    <!-- Part gauche : messagerie (squelette) -->
+    <rect x="116" y="66" width="676" height="626" fill="#181825"/>
+    <!-- En-tete conversation -->
+    <rect x="116" y="66" width="676" height="60" fill="#232336"/>
+    <circle cx="152" cy="96" r="18" fill="#45475a"/>
+    <rect x="182" y="84" width="170" height="12" rx="6" fill="#45475a"/>
+    <rect x="182" y="102" width="110" height="8" rx="4" fill="#313244"/>
+
+    <!-- Bulles recues -->
+    <rect x="140" y="156" width="300" height="46" rx="14" fill="#232336"/>
+    <rect x="158" y="171" width="220" height="8" rx="4" fill="#45475a"/>
+    <rect x="158" y="185" width="150" height="8" rx="4" fill="#383850"/>
+    <rect x="140" y="212" width="220" height="34" rx="14" fill="#232336"/>
+    <rect x="158" y="225" width="160" height="8" rx="4" fill="#45475a"/>
+
+    <!-- Bulles envoyees -->
+    <rect x="428" y="266" width="336" height="46" rx="14" fill="#2b3b58"/>
+    <rect x="446" y="281" width="250" height="8" rx="4" fill="#5e7bab"/>
+    <rect x="446" y="295" width="170" height="8" rx="4" fill="#4a6087"/>
+    <rect x="544" y="322" width="220" height="34" rx="14" fill="#2b3b58"/>
+    <rect x="562" y="335" width="150" height="8" rx="4" fill="#5e7bab"/>
+
+    <rect x="140" y="376" width="380" height="46" rx="14" fill="#232336"/>
+    <rect x="158" y="391" width="290" height="8" rx="4" fill="#45475a"/>
+    <rect x="158" y="405" width="200" height="8" rx="4" fill="#383850"/>
+
+    <rect x="488" y="436" width="276" height="34" rx="14" fill="#2b3b58"/>
+    <rect x="506" y="449" width="200" height="8" rx="4" fill="#5e7bab"/>
+
+    <rect x="140" y="490" width="250" height="34" rx="14" fill="#232336"/>
+    <rect x="158" y="503" width="180" height="8" rx="4" fill="#45475a"/>
+
+    <!-- Zone de saisie -->
+    <rect x="140" y="630" width="576" height="42" rx="21" fill="#232336"/>
+    <rect x="162" y="647" width="180" height="8" rx="4" fill="#383850"/>
+    <circle cx="748" cy="651" r="21" fill="#89b4fa"/>
+    <path d="M741 651 l6 6 l10 -13" stroke="#11111b" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Separateur de vue partagee -->
+    <rect x="792" y="66" width="6" height="626" fill="#181825"/>
+    <rect x="794" y="66" width="2" height="626" fill="#45475a"/>
+
+    <!-- Part droite : agenda (squelette) -->
+    <rect x="798" y="66" width="442" height="626" fill="#181825"/>
+    <rect x="798" y="66" width="442" height="52" fill="#232336"/>
+    <rect x="822" y="86" width="120" height="12" rx="6" fill="#45475a"/>
+    <rect x="1150" y="84" width="66" height="18" rx="9" fill="#89b4fa" opacity="0.8"/>
+
+    <!-- Grille -->
+    <g fill="#232336">
+      <rect x="822" y="140" width="90" height="72" rx="8"/>
+      <rect x="922" y="140" width="90" height="72" rx="8"/>
+      <rect x="1022" y="140" width="90" height="72" rx="8"/>
+      <rect x="1122" y="140" width="90" height="72" rx="8"/>
+      <rect x="822" y="222" width="90" height="72" rx="8"/>
+      <rect x="922" y="222" width="90" height="72" rx="8"/>
+      <rect x="1022" y="222" width="90" height="72" rx="8"/>
+      <rect x="1122" y="222" width="90" height="72" rx="8"/>
+      <rect x="822" y="304" width="90" height="72" rx="8"/>
+      <rect x="922" y="304" width="90" height="72" rx="8"/>
+      <rect x="1022" y="304" width="90" height="72" rx="8"/>
+      <rect x="1122" y="304" width="90" height="72" rx="8"/>
+      <rect x="822" y="386" width="90" height="72" rx="8"/>
+      <rect x="922" y="386" width="90" height="72" rx="8"/>
+      <rect x="1022" y="386" width="90" height="72" rx="8"/>
+      <rect x="1122" y="386" width="90" height="72" rx="8"/>
+    </g>
+    <!-- Evenements -->
+    <rect x="830" y="150" width="74" height="12" rx="6" fill="#89b4fa"/>
+    <rect x="930" y="168" width="74" height="12" rx="6" fill="#a6e3a1"/>
+    <rect x="1030" y="150" width="74" height="12" rx="6" fill="#f38ba8"/>
+    <rect x="930" y="232" width="74" height="12" rx="6" fill="#89b4fa"/>
+    <rect x="1130" y="250" width="74" height="12" rx="6" fill="#fab387"/>
+    <rect x="830" y="314" width="74" height="12" rx="6" fill="#a6e3a1"/>
+    <rect x="1030" y="332" width="74" height="12" rx="6" fill="#89b4fa"/>
+    <rect x="1130" y="396" width="74" height="12" rx="6" fill="#f38ba8"/>
+
+    <!-- Legende basse : trois puces d'etat -->
+    <rect x="822" y="640" width="392" height="34" rx="10" fill="#232336"/>
+    <circle cx="844" cy="657" r="5" fill="#a6e3a1"/>
+    <rect x="858" y="653" width="90" height="8" rx="4" fill="#45475a"/>
+    <circle cx="972" cy="657" r="5" fill="#89b4fa"/>
+    <rect x="986" y="653" width="90" height="8" rx="4" fill="#45475a"/>
+    <circle cx="1100" cy="657" r="5" fill="#f38ba8"/>
+    <rect x="1114" y="653" width="80" height="8" rx="4" fill="#45475a"/>
+  </g>
+</svg>
