@@ -103,6 +103,13 @@ cached in `%APPDATA%\Nexus\catalog-icons.json` and refreshed monthly.
 Prefetch starts right after launch so the grid is warm before the add form
 ever opens. Nothing is bundled: bundled logos go stale.
 
+The cache key is the domain, except for entries with a declared `icon`
+source, which get their own key. Gmail and Google Chat both live on
+mail.google.com; a shared key made Gmail wear the Chat logo. The cache file
+carries a version number: bump it when fetching logic changes, or wrong
+entries survive for a month. Declared sources also cover services whose
+detectable icons are 32px, too soft for a 44px tile on a HiDPI screen.
+
 Hard-earned lessons encoded in `images.js`:
 
 - Sniff formats from magic bytes; servers lie about content types.

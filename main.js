@@ -1539,8 +1539,9 @@ ipcMain.handle('hub:bootstrap', () => ({
   strings: i18n.dict(),
   language: i18n.current(),
   languagePreference: store.get('language'),
-  // Le domaine sert de cle pour les vignettes, chargees a part.
-  catalog: CATALOG.map((entry) => ({ ...entry, domain: catalogIcons.domainOf(entry.url) })),
+  // iconKey identifie la vignette de chaque entree : le domaine, sauf quand une
+  // source est declaree (deux produits Google partagent mail.google.com).
+  catalog: CATALOG.map((entry) => ({ ...entry, iconKey: catalogIcons.keyOf(entry) })),
   catalogIcons: catalogIcons.known(),
   update: pendingUpdate ? { state: 'ready', version: pendingUpdate } : null,
   // Base servant a composer l'icone du tray avec le compteur par-dessus.
@@ -1727,7 +1728,7 @@ app.whenReady().then(() => {
 
   catalogIcons.init({
     log,
-    onIcon: (domain, dataUrl) => send('hub:catalog-icon', { domain, dataUrl }),
+    onIcon: (key, dataUrl) => send('hub:catalog-icon', { key, dataUrl }),
   });
 
   const services = allServices();

@@ -19,12 +19,16 @@
  * formulaire suffit, et une pull request est bienvenue.
  *
  * `icon:` force la source de la vignette quand la detection automatique se
- * trompe. Deux cas rencontres :
+ * trompe ou ne trouve que du 32px, illisible a 44px sur un ecran HiDPI. Cas
+ * rencontres :
  *   - les produits Google partagent un domaine : les annuaires d'icones
  *     renvoient le G generique pour calendar.google.com comme pour gmail. Les
  *     vraies icones produit sont publiees sur gstatic ;
  *   - app.brevo.com sert un apple-touch-icon annonce en image/png qui n'en est
- *     pas un.
+ *     pas un ;
+ *   - les SPA (Vercel, Stripe, ChatGPT...) repondent 200 avec leur index.html
+ *     sur les chemins d'icone standards. Leurs vraies icones vivent sur un CDN,
+ *     ou passent par le service faviconV2 de Google qui en indexe du 128px.
  */
 
 const CATALOG = [
@@ -61,20 +65,20 @@ const CATALOG = [
   { name: 'Linear', url: 'https://linear.app', color: '#5E6AD2', initials: 'LI', category: 'productivity' },
   { name: 'Airtable', url: 'https://airtable.com', color: '#18BFFF', initials: 'AT', category: 'productivity' },
   { name: 'Monday', url: 'https://monday.com', color: '#FF3D57', initials: 'MO', category: 'productivity' },
-  { name: 'Evernote', url: 'https://www.evernote.com/client/web', color: '#00A82D', initials: 'EV', category: 'productivity' },
+  { name: 'Evernote', url: 'https://www.evernote.com/client/web', color: '#00A82D', initials: 'EV', category: 'productivity', icon: 'https://www.evernote.com/apple-touch-icon.png' },
 
   // ---------------------------------------------------------------- developpement
   { name: 'GitHub', url: 'https://github.com', color: '#24292F', initials: 'GH', category: 'development' },
   { name: 'GitLab', url: 'https://gitlab.com', color: '#FC6D26', initials: 'GL', category: 'development' },
   { name: 'Bitbucket', url: 'https://bitbucket.org', color: '#0052CC', initials: 'BB', category: 'development' },
-  { name: 'Vercel', url: 'https://vercel.com/dashboard', color: '#000000', initials: 'VC', category: 'development' },
-  { name: 'Netlify', url: 'https://app.netlify.com', color: '#00C7B7', initials: 'NL', category: 'development' },
+  { name: 'Vercel', url: 'https://vercel.com/dashboard', color: '#000000', initials: 'VC', category: 'development', icon: 'https://assets.vercel.com/image/upload/front/favicon/vercel/180x180.png' },
+  { name: 'Netlify', url: 'https://app.netlify.com', color: '#00C7B7', initials: 'NL', category: 'development', icon: 'https://www.netlify.com/favicon/apple-touch-icon.png' },
   { name: 'Cloudflare', url: 'https://dash.cloudflare.com', color: '#F38020', initials: 'CF', category: 'development' },
   { name: 'Sentry', url: 'https://sentry.io', color: '#362D59', initials: 'SE', category: 'development' },
 
   // ------------------------------------------------------------------------ IA
   { name: 'Claude', url: 'https://claude.ai', color: '#D97757', initials: 'CL', category: 'ai' },
-  { name: 'ChatGPT', url: 'https://chatgpt.com', color: '#10A37F', initials: 'GP', category: 'ai' },
+  { name: 'ChatGPT', url: 'https://chatgpt.com', color: '#10A37F', initials: 'GP', category: 'ai', icon: 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://chatgpt.com&size=128' },
   { name: 'Gemini', url: 'https://gemini.google.com', color: '#8E75B2', initials: 'GE', category: 'ai' },
   { name: 'Perplexity', url: 'https://www.perplexity.ai', color: '#20808D', initials: 'PP', category: 'ai' },
   { name: 'Le Chat', url: 'https://chat.mistral.ai', color: '#FA520F', initials: 'MI', category: 'ai' },
@@ -95,10 +99,10 @@ const CATALOG = [
   { name: 'Bluesky', url: 'https://bsky.app', color: '#0085FF', initials: 'BS', category: 'social' },
 
   // ------------------------------------------------------------------ business
-  { name: 'Stripe', url: 'https://dashboard.stripe.com', color: '#635BFF', initials: 'ST', category: 'business' },
+  { name: 'Stripe', url: 'https://dashboard.stripe.com', color: '#635BFF', initials: 'ST', category: 'business', icon: 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://stripe.com&size=128' },
   { name: 'PayPal', url: 'https://www.paypal.com', color: '#003087', initials: 'PP', category: 'business' },
   { name: 'HubSpot', url: 'https://app.hubspot.com', color: '#FF7A59', initials: 'HS', category: 'business' },
-  { name: 'Intercom', url: 'https://app.intercom.com', color: '#1F8DED', initials: 'IC', category: 'business' },
+  { name: 'Intercom', url: 'https://app.intercom.com', color: '#1F8DED', initials: 'IC', category: 'business', icon: 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://intercom.com&size=128' },
   { name: 'Crisp', url: 'https://app.crisp.chat', color: '#1972F5', initials: 'CR', category: 'business' },
   { name: 'Brevo', url: 'https://app.brevo.com', color: '#0B996E', initials: 'BV', category: 'business', icon: 'https://icons.duckduckgo.com/ip3/www.brevo.com.ico' },
 ];

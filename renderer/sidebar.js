@@ -76,8 +76,8 @@ function applyTranslations() {
     el.title = t(el.dataset.i18nTitle);
   }
 }
-/** domaine -> elements affiches, pour les mettre a jour quand l'icone arrive. */
-let tilesByDomain = new Map();
+/** cle de vignette -> elements affiches, mis a jour quand l'icone arrive. */
+let tilesByKey = new Map();
 let pickedIcon = null;
 
 // ---------------------------------------------------------------------------
@@ -464,27 +464,27 @@ function buildLogo(entry, size) {
 
   logo.append(img, text);
 
-  const dataUrl = catalogIcons[entry.domain];
+  const dataUrl = catalogIcons[entry.iconKey];
   if (dataUrl) {
     img.src = dataUrl;
     img.hidden = false;
     logo.classList.add('has-img');
   }
 
-  if (entry.domain) {
-    const list = tilesByDomain.get(entry.domain) || [];
+  if (entry.iconKey) {
+    const list = tilesByKey.get(entry.iconKey) || [];
     list.push(logo);
-    tilesByDomain.set(entry.domain, list);
+    tilesByKey.set(entry.iconKey, list);
   }
 
   return logo;
 }
 
 /** Une vignette arrivee en tache de fond remplit les emplacements deja rendus. */
-function applyCatalogIcon(domain, dataUrl) {
-  catalogIcons[domain] = dataUrl;
+function applyCatalogIcon(key, dataUrl) {
+  catalogIcons[key] = dataUrl;
 
-  for (const logo of tilesByDomain.get(domain) || []) {
+  for (const logo of tilesByKey.get(key) || []) {
     const img = logo.querySelector('img');
     img.src = dataUrl;
     img.hidden = false;
@@ -509,7 +509,7 @@ function buildTile(entry) {
 function renderCatalog(query) {
   const needle = normalize(query).trim();
   catalogGrid.innerHTML = '';
-  tilesByDomain = new Map();
+  tilesByKey = new Map();
 
   // Une adresse saisie a la main passe avant tout le reste : c'est une intention
   // explicite, pas une recherche.
@@ -583,7 +583,7 @@ function pickCatalogEntry(entry) {
   fields.initials.value = entry.initials || (entry.name || '').slice(0, 2).toUpperCase();
   fields.color.value = entry.color || '#45475a';
   fields.spoof.checked = Boolean(entry.spoof);
-  pickedIcon = catalogIcons[entry.domain] || null;
+  pickedIcon = catalogIcons[entry.iconKey] || null;
 
   modal.classList.add('picked');
   refreshPreview();
@@ -915,7 +915,7 @@ function startOnboarding() {
   window.hub.onIcon(({ id, dataUrl, source }) => setIcon(id, dataUrl, source));
   window.hub.onOrder(({ order }) => applyOrder(order));
   window.hub.onServices(({ services }) => renderSidebar(services));
-  window.hub.onCatalogIcon(({ domain, dataUrl }) => applyCatalogIcon(domain, dataUrl));
+  window.hub.onCatalogIcon(({ key, dataUrl }) => applyCatalogIcon(key, dataUrl));
   window.hub.onEditService(({ id }) => {
     const item = items.get(id);
     if (item) openForm(item.service);

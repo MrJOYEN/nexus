@@ -26,8 +26,13 @@ const REQUEST_TIMEOUT_MS = 6000;
 const MAX_BYTES = 1024 * 1024;
 const GOOD_ENOUGH = 128; // au-dela, inutile d'essayer les candidats suivants
 
+// Version du format de cache. A incrementer quand la logique de recuperation
+// change assez pour que les entrees existantes soient fausses (mauvaise icone,
+// resolution trop basse) : sans ca, elles survivraient un mois.
+const CACHE_VERSION = 2;
+
 let cacheFile = null;
-let cache = {}; // domaine -> { dataUrl, width, fetchedAt }
+let cache = {}; // cle d'entree -> { dataUrl, width, fetchedAt }
 let saveTimer = null;
 let running = false;
 let log = () => {};
@@ -39,8 +44,13 @@ function init(options = {}) {
   notify = options.onIcon || notify;
 
   try {
-    cache = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
-    log('catalogue', `${Object.keys(cache).length} vignettes en cache`);
+    const raw = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
+    if (raw.version === CACHE_VERSION) {
+      cache = raw.icons || {};
+      log('catalogue', `${Object.keys(cache).length} vignettes en cache`);
+    } else {
+      log('catalogue', 'cache d\'une version precedente, reconstruit');
+    }
   } catch {
     cache = {}; // absent ou illisible : on repart d'un cache vide, sans bruit
   }
@@ -50,7 +60,7 @@ function scheduleSave() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     try {
-      fs.writeFileSync(cacheFile, JSON.stringify(cache));
+      fs.writeFileSync(cacheFile, JSON.stringify({ version: CACHE_VERSION, icons: cache }));
     } catch (err) {
       log('catalogue', `cache non ecrit : ${err.message}`);
     }
@@ -63,6 +73,23 @@ function domainOf(url) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Cle de cache d'une entree du catalogue.
+ *
+ * Le domaine seul ne suffit pas : Gmail et Google Chat vivent tous deux sur
+ * mail.google.com, et une cle partagee faisait porter a Gmail le logo de Chat
+ * (le premier des deux a etre rafraichi gagnait). Une entree avec une source
+ * declaree obtient donc une cle qui lui est propre.
+ */
+function keyOf(entry) {
+  const domain = domainOf(entry.url);
+  if (!domain) return null;
+  if (!entry.icon) return domain;
+
+  const base = entry.icon.split('/').pop().split('?')[0].slice(0, 48) || 'override';
+  return `${domain}#${base}`;
 }
 
 /**
@@ -179,8 +206,8 @@ function isStale(entry) {
 /** Vignettes connues, pretes a etre envoyees au renderer. */
 function known() {
   const result = {};
-  for (const [domain, entry] of Object.entries(cache)) {
-    if (entry?.dataUrl) result[domain] = entry.dataUrl;
+  for (const [key, entry] of Object.entries(cache)) {
+    if (entry?.dataUrl) result[key] = entry.dataUrl;
   }
   return result;
 }
@@ -192,36 +219,36 @@ function known() {
 async function refresh(entries) {
   if (running) return;
 
-  const overrides = new Map();
+  // cle -> { domain, override }, dedupliquee : deux entrees sans source declaree
+  // sur le meme domaine partagent une seule requete.
+  const targets = new Map();
   for (const entry of entries) {
-    const domain = domainOf(entry.url);
-    if (domain && entry.icon && !overrides.has(domain)) overrides.set(domain, entry.icon);
+    const key = keyOf(entry);
+    if (key && !targets.has(key)) targets.set(key, { domain: domainOf(entry.url), override: entry.icon || null });
   }
 
-  const domains = [...new Set(entries.map((entry) => domainOf(entry.url)).filter(Boolean))].filter(
-    (domain) => isStale(cache[domain])
-  );
-
-  if (!domains.length) return;
+  const stale = [...targets.keys()].filter((key) => isStale(cache[key]));
+  if (!stale.length) return;
 
   running = true;
-  log('catalogue', `${domains.length} vignette(s) a rafraichir`);
+  log('catalogue', `${stale.length} vignette(s) a rafraichir`);
 
   let index = 0;
   let updated = 0;
 
   const worker = async () => {
-    while (index < domains.length) {
-      const domain = domains[index++];
-      const found = await fetchIcon(domain, overrides.get(domain));
+    while (index < stale.length) {
+      const key = stale[index++];
+      const { domain, override } = targets.get(key);
+      const found = await fetchIcon(domain, override);
 
       if (found) {
-        cache[domain] = { ...found, fetchedAt: Date.now() };
+        cache[key] = { ...found, fetchedAt: Date.now() };
         updated++;
-        notify(domain, found.dataUrl);
+        notify(key, found.dataUrl);
       } else {
         // Memorise l'echec pour ne pas reessayer a chaque demarrage.
-        cache[domain] = { dataUrl: null, fetchedAt: Date.now() };
+        cache[key] = { dataUrl: null, fetchedAt: Date.now() };
       }
 
       scheduleSave();
@@ -233,9 +260,9 @@ async function refresh(entries) {
   running = false;
   log(
     'catalogue',
-    `${updated}/${domains.length} vignette(s) recuperee(s)` +
-      (updated < domains.length ? ` — ${domains.length - updated} sans icone exploitable` : '')
+    `${updated}/${stale.length} vignette(s) recuperee(s)` +
+      (updated < stale.length ? `, ${stale.length - updated} sans icone exploitable` : '')
   );
 }
 
-module.exports = { init, refresh, known, domainOf, SVG_SCORE };
+module.exports = { init, refresh, known, domainOf, keyOf, SVG_SCORE };
