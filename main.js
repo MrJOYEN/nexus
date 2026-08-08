@@ -1198,7 +1198,7 @@ function createApplicationMenu() {
 
 // Les langues s'affichent dans leur propre langue : un francophone perdu dans
 // une interface anglaise doit reconnaitre "Francais" sans le traduire.
-const LANGUAGE_NAMES = { en: 'English', fr: 'Français' };
+const LANGUAGE_NAMES = { en: 'English', fr: 'Français', es: 'Español' };
 
 /**
  * Change la langue a chaud, sans rien recharger. Menus et tray sont reconstruits

@@ -29,7 +29,7 @@ Discord accounts and anything else. They never sign each other out.
 - Drag and drop ordering, keyboard shortcuts, close to tray
 - Per-service sleep to free memory, manual or automatic
 - Automatic updates through GitHub Releases
-- English and French interface
+- English, French and Spanish interface
 
 ## Install
 

@@ -16,7 +16,7 @@ const { app } = require('electron');
  */
 
 const FALLBACK = 'en';
-const AVAILABLE = ['en', 'fr'];
+const AVAILABLE = ['en', 'fr', 'es'];
 
 const dictionaries = {};
 let language = FALLBACK;
