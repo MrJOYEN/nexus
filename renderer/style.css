@@ -620,7 +620,8 @@ body {
   letter-spacing: 0.25em;
 }
 
-#lock-form button {
+#lock-form button,
+#service-lock-form button {
   width: 100%;
   padding: 10px 22px;
   border: 0;
@@ -633,8 +634,46 @@ body {
   cursor: pointer;
 }
 
-#lock-form button:hover {
+#lock-form button:hover,
+#service-lock-form button:hover {
   filter: brightness(1.1);
+}
+
+/* Ecran de code d'un service protege : dans la zone de contenu seulement, la
+   sidebar reste accessible pour aller ailleurs. */
+#service-lock {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  background: var(--content-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#service-lock-form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 250px;
+  text-align: center;
+}
+
+#service-lock-form h1 {
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+#service-lock-form .lock-hint {
+  margin-top: -4px;
+}
+
+#service-lock-form input[type="password"] {
+  text-align: center;
+  font-size: 15px;
+  letter-spacing: 0.25em;
 }
 
 #lock-setup {
@@ -673,7 +712,8 @@ body {
 }
 
 #lock-error,
-#lock-setup-error {
+#lock-setup-error,
+#service-lock-error {
   padding: 9px 11px;
   border-radius: 6px;
   background: rgba(229, 72, 77, 0.12);

@@ -817,6 +817,46 @@ lockForm.addEventListener('submit', async (event) => {
   // Le succes arrive par hub:lock { locked: false } : rien a faire ici.
 });
 
+// Ecran de code d'un service protege (la sidebar reste utilisable).
+const serviceLock = document.getElementById('service-lock');
+const serviceLockForm = document.getElementById('service-lock-form');
+const serviceLockAvatar = document.getElementById('service-lock-avatar');
+const serviceLockTitle = document.getElementById('service-lock-title');
+const serviceLockPin = document.getElementById('service-lock-pin');
+const serviceLockError = document.getElementById('service-lock-error');
+
+function showServiceLock(id) {
+  const item = items.get(id);
+  if (!item) return;
+
+  serviceLockAvatar.textContent = item.service.initials;
+  serviceLockAvatar.style.setProperty('--service-color', item.service.color);
+  serviceLockTitle.textContent = t('serviceLock.title', { name: item.service.name });
+  serviceLockPin.value = '';
+  serviceLockError.classList.add('hidden');
+  serviceLock.classList.remove('hidden');
+  serviceLockPin.focus();
+}
+
+function hideServiceLock() {
+  serviceLock.classList.add('hidden');
+}
+
+serviceLockForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+
+  const result = await window.hub.unlockService(activeId, serviceLockPin.value);
+  if (result?.error) {
+    serviceLockError.textContent = result.error;
+    serviceLockError.classList.remove('hidden');
+    serviceLockPin.value = '';
+    serviceLockPin.focus();
+    return;
+  }
+
+  hideServiceLock();
+});
+
 function openLockSetup(mode) {
   lockMode = mode;
   lockSetupTitle.textContent = t(`lock.title.${mode}`);
@@ -1027,6 +1067,7 @@ function startOnboarding() {
   splitId = boot.splitId || null;
   renderSidebar(boot.services);
   if (boot.activeId) setActive(boot.activeId);
+  if (boot.activeNeedsCode) showServiceLock(boot.activeId);
   if (boot.splitId) setSplit(boot.splitId);
   showUpdate(boot.update);
   if (boot.locked) setLocked(true);
@@ -1038,7 +1079,11 @@ function startOnboarding() {
   );
 
   window.hub.onStatus(({ id, status, message }) => setStatus(id, status, message));
-  window.hub.onActive(({ id }) => setActive(id));
+  window.hub.onActive(({ id, needsCode }) => {
+    setActive(id);
+    if (needsCode) showServiceLock(id);
+    else hideServiceLock();
+  });
   window.hub.onSplit(({ id }) => setSplit(id));
   window.hub.onBadge(({ id, count }) => setBadge(id, count));
   window.hub.onIcon(({ id, dataUrl, source }) => setIcon(id, dataUrl, source));

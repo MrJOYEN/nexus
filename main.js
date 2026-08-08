@@ -89,6 +89,8 @@ const store = new Store({
     splitId: null,
     // Verrouillage : code hache (scrypt), jamais en clair.
     lock: { hash: null, salt: null, onSuspend: true, idleMinutes: 0 },
+    // id -> true : services qui exigent le code individuellement.
+    protected: {},
   },
 });
 
@@ -781,7 +783,7 @@ function setStatus(entry, status, message) {
   // En erreur la vue est masquee : l'overlay "Reessayer" du renderer principal
   // devient visible dessous.
   if (!locked && (entry.service.id === activeId || entry.service.id === splitId)) {
-    entry.view.setVisible(status !== 'error');
+    entry.view.setVisible(status !== 'error' && !needsCode(entry.service.id));
   }
 
   send('hub:status', { id: entry.service.id, status, message });
@@ -890,17 +892,20 @@ function showService(id) {
 
   applyViewVisibility();
   layoutViews();
-  if (entry.status !== 'error') entry.view.webContents.focus();
+  if (entry.status !== 'error' && !needsCode(id)) entry.view.webContents.focus();
 
-  log('switch', id);
-  send('hub:active', { id });
+  log('switch', id + (needsCode(id) ? ' (code demande)' : ''));
+  send('hub:active', { id, needsCode: needsCode(id) });
 }
 
 /** Seuls le service actif et celui de la moitie droite sont visibles. */
 function applyViewVisibility() {
   for (const [id, entry] of views) {
     entry.view.setVisible(
-      !locked && (id === activeId || id === splitId) && entry.status !== 'error'
+      !locked &&
+        (id === activeId || id === splitId) &&
+        entry.status !== 'error' &&
+        !needsCode(id)
     );
   }
 }
@@ -1014,10 +1019,30 @@ function verifyPin(pin) {
   return candidate.length === expected.length && crypto.timingSafeEqual(candidate, expected);
 }
 
+// -- Verrouillage par service ------------------------------------------------
+// En plus du verrouillage global, un service peut exiger le code a lui seul
+// (clic droit > "Demander le code"). Un service protege se charge normalement
+// en arriere-plan (notifications comprises) mais sa vue reste masquee derriere
+// un ecran de code tant qu'il n'a pas ete deverrouille. Le deverrouillage vaut
+// jusqu'au prochain verrouillage de l'app (Ctrl+L, veille, inactivite).
+
+/** Services proteges deja deverrouilles depuis le dernier verrouillage. */
+const unlockedIds = new Set();
+
+/** La protection n'est effective que si un code existe. */
+function isProtected(id) {
+  return Boolean(store.get('protected')?.[id]) && hasPin();
+}
+
+function needsCode(id) {
+  return Boolean(id) && isProtected(id) && !unlockedIds.has(id);
+}
+
 function lockApp(reason) {
   if (locked || !hasPin()) return;
 
   locked = true;
+  unlockedIds.clear(); // les services proteges redemandent leur code
   // Les vues sont des couches natives au-dessus du renderer : sans ca, l'ecran
   // de verrouillage resterait cache sous le service affiche.
   for (const entry of views.values()) entry.view.setVisible(false);
@@ -1842,11 +1867,12 @@ async function deleteService(id) {
   );
   store.set('order', (store.get('order') || []).filter((entryId) => entryId !== id));
 
-  for (const key of ['icons', 'muted']) {
+  for (const key of ['icons', 'muted', 'protected']) {
     const map = { ...store.get(key) };
     delete map[id];
     store.set(key, map);
   }
+  unlockedIds.delete(id);
 
   if (checkboxChecked) {
     await session.fromPartition(service.partition).clearStorageData();
@@ -1881,6 +1907,8 @@ ipcMain.handle('hub:bootstrap', () => ({
   version: app.getVersion(),
   onboarding: needsOnboarding(),
   locked,
+  // Le service actif peut deja attendre son code (relancement de l'app).
+  activeNeedsCode: needsCode(activeId),
   // Le renderer est sandboxe : il ne lit pas les fichiers de langue, il recoit
   // le dictionnaire deja resolu.
   strings: i18n.dict(),
@@ -1909,6 +1937,23 @@ ipcMain.handle('hub:unlock', (_e, pin) => {
   return { ok: true };
 });
 
+/** Deverrouillage d'un seul service protege, depuis son ecran de code. */
+ipcMain.handle('hub:unlock-service', (_e, { id, pin } = {}) => {
+  if (!needsCode(id)) return { ok: true };
+  if (!verifyPin(pin)) {
+    log('lock', `${id} : code errone`);
+    return { error: t('lock.wrong') };
+  }
+
+  unlockedIds.add(id);
+  log('lock', `${id} : deverrouille`);
+  applyViewVisibility();
+
+  const entry = views.get(id);
+  if (entry && entry.status !== 'error' && id === activeId) entry.view.webContents.focus();
+  return { ok: true };
+});
+
 /** Definition, changement ou suppression du code, depuis le formulaire dedie. */
 ipcMain.handle('hub:lock-config', (_e, draft) => {
   const { mode, current, next, confirm } = draft || {};
@@ -1929,6 +1974,13 @@ ipcMain.handle('hub:lock-config', (_e, draft) => {
   const salt = crypto.randomBytes(16).toString('hex');
   store.set('lock', { ...store.get('lock'), hash: hashPin(next, salt), salt });
   log('lock', 'code defini');
+
+  // Un service protege actuellement affiche ne se verrouille pas sous les yeux
+  // de celui qui vient de definir le code : il s'armera au prochain verrouillage.
+  for (const id of [activeId, splitId]) {
+    if (id && store.get('protected')?.[id]) unlockedIds.add(id);
+  }
+
   createApplicationMenu();
   return { ok: true };
 });
@@ -2037,8 +2089,33 @@ ipcMain.on('hub:service-menu', (_e, id) => {
     },
     {
       label: id === splitId ? t('ctx.splitClose') : t('ctx.split'),
-      enabled: id === splitId || id !== activeId,
+      // Un service qui attend son code se deverrouille d'abord en vue simple.
+      enabled: id === splitId || (id !== activeId && !needsCode(id)),
       click: () => (id === splitId ? closeSplit('demande manuelle') : setSplit(id)),
+    },
+    {
+      label: t('ctx.protect'),
+      type: 'checkbox',
+      checked: Boolean(store.get('protected')?.[id]),
+      click: () => {
+        const flags = { ...store.get('protected') };
+        if (flags[id]) delete flags[id];
+        else flags[id] = true;
+        store.set('protected', flags);
+
+        // Le service qu'on regarde ne se verrouille pas sous nos yeux : la
+        // protection s'armera au prochain verrouillage de l'app.
+        if (flags[id] && (id === activeId || id === splitId)) unlockedIds.add(id);
+        if (!flags[id]) unlockedIds.delete(id);
+
+        log('lock', `${id} : code ${flags[id] ? 'exige' : 'non exige'}`);
+
+        // Proteger un service sans avoir de code : on propose d'en definir un.
+        if (flags[id] && !hasPin()) send('hub:lock-setup', { mode: 'set' });
+
+        applyViewVisibility();
+        send('hub:active', { id: activeId, needsCode: needsCode(activeId) });
+      },
     },
     { type: 'separator' },
     { label: t('ctx.icon'), click: () => chooseIcon(id) },

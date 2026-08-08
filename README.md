@@ -27,7 +27,7 @@ Discord accounts and anything else. They never sign each other out.
 - Unread badges in the sidebar, on the taskbar icon and on the tray icon
 - A catalogue of popular services with their real logos, plus any custom URL
 - Split view: a second service on the right half of the window
-- App lock: a code screen over the window, manual or automatic
+- App lock: a code over the whole window or over single services
 - Drag and drop ordering, keyboard shortcuts, close to tray
 - Per-service sleep to free memory, manual or automatic
 - Spell checking as you type, following the interface language

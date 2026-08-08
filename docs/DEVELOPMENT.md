@@ -113,6 +113,14 @@ in. Auto-lock listens to `powerMonitor` (`lock-screen`, `suspend`) and polls
 `getSystemIdleTime` every 30 s for the idle timeout, because idleness is not
 an event.
 
+A single service can also require the code on its own (right click, "Require
+the code"). A protected service keeps loading in the background, badges and
+notifications included; only its view stays hidden behind a code screen that
+covers the content area, sidebar still usable. Unlocking lasts until the app
+locks again (`unlockedIds` is cleared by `lockApp`), and the service you are
+currently looking at never locks itself under your eyes when you flip the
+toggle or set the first code.
+
 ## Spell checking
 
 Chromium's own spell checker, enabled per session. Languages follow the

@@ -37,6 +37,25 @@
         </div>
       </div>
 
+      <!-- Ecran de code d'un service protege : occupe la zone de contenu, la
+           sidebar reste utilisable pour passer a un autre service. -->
+      <div id="service-lock" class="hidden">
+        <form id="service-lock-form" autocomplete="off">
+          <div class="overlay-avatar" id="service-lock-avatar">--</div>
+          <h1 id="service-lock-title"></h1>
+          <p class="lock-hint" data-i18n="serviceLock.hint">Enter the code to open this service.</p>
+          <input
+            id="service-lock-pin"
+            type="password"
+            maxlength="64"
+            placeholder="Code"
+            data-i18n-placeholder="lock.placeholder"
+          />
+          <p id="service-lock-error" class="hidden"></p>
+          <button type="submit" data-i18n="lock.unlock">Unlock</button>
+        </form>
+      </div>
+
       <!-- Deux densites, une seule vue : la galerie occupe tout tant qu'aucun
            service n'est choisi, puis se resserre pour laisser place aux
            reglages. La classe .picked sur #modal fait la bascule. -->

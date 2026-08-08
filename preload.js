@@ -35,6 +35,9 @@ contextBridge.exposeInMainWorld('hub', {
   /** Tente de deverrouiller avec le code saisi -> { ok } ou { error }. */
   unlock: (pin) => ipcRenderer.invoke('hub:unlock', pin),
 
+  /** Deverrouille un seul service protege -> { ok } ou { error }. */
+  unlockService: (id, pin) => ipcRenderer.invoke('hub:unlock-service', { id, pin }),
+
   /** Definit, change ou supprime le code -> { ok } ou { error }. */
   configureLock: (draft) => ipcRenderer.invoke('hub:lock-config', draft),
 
@@ -69,7 +72,7 @@ contextBridge.exposeInMainWorld('hub', {
   /** { id, status: 'loading' | 'ready' | 'error' | 'hibernated', message? } */
   onStatus: (callback) => on('hub:status', callback),
 
-  /** { id } - le service actif a change (clic sidebar, raccourci, tray). */
+  /** { id, needsCode } - le service actif a change (clic sidebar, raccourci, tray). */
   onActive: (callback) => on('hub:active', callback),
 
   /** { id } - le service affiche dans la moitie droite (null = vue simple). */
