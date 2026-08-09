@@ -215,6 +215,33 @@ WACK deploie le paquet pour le tester : il lui faut donc le paquet **signe**, ou
 comme ici celui deja installe. Le `-store.msix` non signe ne peut pas etre teste
 directement.
 
+**Piege : WACK laisse le paquet dans un etat de debogage.** Apres son passage,
+l'application se lance suspendue — un seul process, un seul thread,
+`WaitReason = Suspended`, zero seconde de CPU. Aucune fenetre n'apparait et les
+activations suivantes ne font rien, puisqu'elles passent la main a l'instance
+suspendue. Le code n'est jamais execute : ce n'est pas un defaut applicatif, et
+ca ne concerne que la machine de test — WACK ne tourne jamais chez un
+utilisateur.
+
+Diagnostic en une commande :
+
+```powershell
+(Get-Process Nexus).Threads[0] | Select-Object ThreadState, WaitReason
+```
+
+Remise en etat, du moins invasif au plus sur :
+
+```powershell
+& $appcert reset
+# si insuffisant :
+Get-AppxPackage -Name MehdiJoyen.NexusMessenger | Remove-AppxPackage
+Add-AppxPackage -Path .\dist\Nexus-<version>-sideload.msix
+```
+
+Un symptome voisin a ete observe dans le meme etat — l'application se relancait
+seule apres une sortie par la zone de notification — et a disparu avec le meme
+nettoyage. Non reproduit depuis, cause non formellement etablie.
+
 Reste a valider a la main, faute de pouvoir l'automatiser :
 
 - Affichage d'un toast sur message entrant (la fonction phare).
