@@ -166,8 +166,6 @@
   "ob.start": "Empezar con {count}",
   "ob.startNone": "Elige al menos un servicio",
   "menu.view.mixer": "Mezclador de volumen…",
-  "ctx.volume": "Volumen",
-  "ctx.volumeCurrent": "Actualmente {value} %",
   "ctx.volumeZero": "Silenciado",
   "ctx.mixer": "Abrir el mezclador…",
   "mixer.title": "Mezclador de volumen",
@@ -175,5 +173,10 @@
   "mixer.all": "Todos",
   "mixer.muted": "Silenciado",
   "mixer.close": "Cerrar",
-  "mixer.hint": "Se aplica dentro de cada servicio. Windows solo ve una aplicación."
+  "mixer.hint": "Se aplica dentro de cada servicio. Windows solo ve una aplicación.",
+  "ctx.volumeLabel": "Volumen — {value}",
+  "ctx.more": "Más",
+  "sidebar.mixer": "Mezclador de volumen",
+  "tile.volume": "Volumen al {value} %",
+  "tile.muted": "Sonido silenciado"
 }

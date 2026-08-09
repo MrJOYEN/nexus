@@ -136,12 +136,28 @@ function renderSidebar(services) {
     const badge = document.createElement('span');
     badge.className = 'badge';
 
-    el.append(avatar, chip, badge);
+    // Etat sonore : masque tant que le service est a plein volume.
+    const vol = document.createElement('span');
+    vol.className = 'vol';
+
+    el.append(avatar, chip, badge, vol);
     el.addEventListener('click', () => select(service.id));
     el.addEventListener('contextmenu', (event) => {
       event.preventDefault();
       window.hub.serviceMenu(service.id);
     });
+
+    // Molette sur la tuile : on agit sur la chose elle-meme, sans ouvrir de
+    // panneau. Accelerateur seulement — le melangeur et le menu restent les
+    // chemins visibles.
+    el.addEventListener(
+      'wheel',
+      (event) => {
+        event.preventDefault();
+        adjustVolume(service.id, event.deltaY < 0 ? 5 : -5);
+      },
+      { passive: false }
+    );
 
     el.addEventListener('dragstart', (event) => {
       dragged = el;
@@ -162,6 +178,7 @@ function renderSidebar(services) {
     if (service.dataUrl) setIcon(service.id, service.dataUrl, service.source);
     if (service.hibernating) setStatus(service.id, 'hibernated');
     setBadge(service.id, badges.get(service.id) || 0);
+    refreshVolumeTile(service.id);
   });
 
   if (activeId) setActive(activeId);
@@ -1442,6 +1459,8 @@ function startOnboarding() {
         value: Number.isFinite(service.volume) ? service.volume : 100,
         onInput: (value) => {
           service.volume = value;
+          // La pastille suit le curseur sans attendre l'aller-retour IPC.
+          refreshVolumeTile(service.id);
           window.hub.setVolume(service.id, value);
         },
       });
@@ -1467,6 +1486,7 @@ function startOnboarding() {
   }
 
   closeEl.addEventListener('click', close);
+  document.getElementById('mixer-btn').addEventListener('click', open);
 
   // Clic sur le fond, hors du panneau.
   mixer.addEventListener('mousedown', (event) => {
@@ -1481,7 +1501,7 @@ function startOnboarding() {
 
   // Le sous-menu du clic droit change la meme valeur : le panneau ouvert doit
   // suivre sans qu'on le reouvre.
-  window.hub.onVolume(({ id, value, master }) => {
+  window.hub.onVolume(({ id, value, muted, master }) => {
     if (Number.isFinite(master)) {
       masterVolume = master;
       if (masterRow) {
@@ -1492,7 +1512,11 @@ function startOnboarding() {
     }
 
     const item = items.get(id);
-    if (item) item.service.volume = value;
+    if (item) {
+      item.service.volume = value;
+      if (typeof muted === 'boolean') item.service.muted = muted;
+      refreshVolumeTile(id);
+    }
 
     const entry = rows.get(id);
     if (entry) {
@@ -1501,3 +1525,102 @@ function startOnboarding() {
     }
   });
 })();
+
+/* ------------------------------------------------------------------------- */
+/* Etat sonore visible : pastille sur la tuile, molette, repere fugace        */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * Un service baisse ressemblait a un service a plein volume : on oubliait
+ * l'avoir touche, et on cherchait la panne ailleurs. La pastille rend l'etat
+ * lisible sans rien ouvrir, et ne s'affiche qu'en cas d'ecart — a 100 %, rien.
+ */
+const SPEAKER_LOW =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg>';
+
+const SPEAKER_OFF =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="m22 9-6 6"/><path d="m16 9 6 6"/></svg>';
+
+function refreshVolumeTile(id) {
+  const item = items.get(id);
+  if (!item) return;
+
+  const level = Number.isFinite(item.service.volume) ? item.service.volume : 100;
+  // La coupure des notifications coupe aussi l'audio du webContents : les deux
+  // aboutissent au silence, la pastille ne fait pas de difference.
+  const silent = Boolean(item.service.muted) || level === 0;
+  const show = silent || level < 100;
+
+  item.el.classList.toggle('has-vol', show);
+
+  const vol = item.el.querySelector('.vol');
+  if (!vol || !show) return;
+
+  vol.classList.toggle('off', silent);
+  vol.innerHTML = silent ? SPEAKER_OFF : SPEAKER_LOW;
+  vol.title = silent ? t('tile.muted') : t('tile.volume', { value: level });
+}
+
+/* --- Envoi menage ---------------------------------------------------------- */
+
+// Chaque changement reinjecte le gain dans la page : une molette rapide en
+// declencherait des dizaines. On envoie tout de suite, puis au plus une fois
+// par fenetre, avec un dernier envoi pour la valeur finale.
+const volumeTimers = new Map();
+const volumePending = new Set();
+
+function pushVolume(id) {
+  if (volumeTimers.has(id)) {
+    volumePending.add(id);
+    return;
+  }
+
+  window.hub.setVolume(id, items.get(id)?.service.volume ?? 100);
+
+  volumeTimers.set(
+    id,
+    setTimeout(() => {
+      volumeTimers.delete(id);
+      if (volumePending.delete(id)) pushVolume(id);
+    }, 90)
+  );
+}
+
+function adjustVolume(id, delta) {
+  const item = items.get(id);
+  if (!item) return;
+
+  const current = Number.isFinite(item.service.volume) ? item.service.volume : 100;
+  const next = Math.min(100, Math.max(0, current + delta));
+  if (next === current) return;
+
+  item.service.volume = next;
+  refreshVolumeTile(id);
+  showVolumeHud(item.el, next);
+  pushVolume(id);
+}
+
+/* --- Repere fugace --------------------------------------------------------- */
+
+const volHud = document.getElementById('vol-hud');
+const volHudFill = document.getElementById('vol-hud-fill');
+const volHudVal = document.getElementById('vol-hud-val');
+let volHudTimer = null;
+
+function showVolumeHud(tile, value) {
+  const rect = tile.getBoundingClientRect();
+  // Centre sur la tuile, puis borne pour ne pas sortir de la fenetre quand le
+  // service vise est tout en haut ou tout en bas de la sidebar.
+  const top = Math.min(
+    window.innerHeight - 52,
+    Math.max(8, rect.top + rect.height / 2 - 19)
+  );
+
+  volHud.style.top = `${Math.round(top)}px`;
+  volHudFill.style.width = `${value}%`;
+  volHudVal.textContent = value === 0 ? t('mixer.muted') : `${value} %`;
+  volHud.classList.remove('hidden');
+
+  clearTimeout(volHudTimer);
+  volHudTimer = setTimeout(() => volHud.classList.add('hidden'), 1100);
+}

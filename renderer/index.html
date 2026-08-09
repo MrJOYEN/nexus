@@ -19,6 +19,14 @@
         <button id="update-btn" class="action update hidden" type="button" title="Update">
           <span aria-hidden="true">↑</span>
         </button>
+        <!-- Chemin visible vers le melangeur : Ctrl+M et le sous-menu du clic
+             droit y menent aussi, mais aucun des deux ne se decouvre seul. -->
+        <button id="mixer-btn" class="action" type="button" title="Volume mixer" data-i18n-title="sidebar.mixer">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <path d="M4 21v-6M4 11V3M12 21v-9M12 8V3M20 21v-4M20 13V3" />
+            <path d="M1.5 15h5M9.5 12h5M17.5 17h5" />
+          </svg>
+        </button>
         <button id="add-btn" class="action" type="button" title="Add a service" data-i18n-title="sidebar.add">
           <span aria-hidden="true">+</span>
         </button>
@@ -174,6 +182,17 @@
         </form>
       </div>
     </main>
+
+    <!-- Repere fugace de la molette sur une tuile. Hors de la sidebar : il doit
+         deborder sur la zone du service, que la sidebar rogne. -->
+    <div id="vol-hud" class="hidden" aria-live="polite">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M11 5 6 9H2v6h4l5 4V5z" />
+        <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+      </svg>
+      <div class="vol-hud-track"><div id="vol-hud-fill"></div></div>
+      <span id="vol-hud-val"></span>
+    </div>
 
     <!-- Melangeur de volume, ouvert depuis Affichage ou le sous-menu Volume du
          clic droit. Comme les autres modales, il escamote les vues natives : sans

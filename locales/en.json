@@ -166,8 +166,6 @@
   "ob.start": "Start with {count}",
   "ob.startNone": "Select at least one service",
   "menu.view.mixer": "Volume mixer…",
-  "ctx.volume": "Volume",
-  "ctx.volumeCurrent": "Currently {value} %",
   "ctx.volumeZero": "Muted",
   "ctx.mixer": "Open the mixer…",
   "mixer.title": "Volume mixer",
@@ -175,5 +173,10 @@
   "mixer.all": "All",
   "mixer.muted": "Muted",
   "mixer.close": "Close",
-  "mixer.hint": "Applied inside each service. Windows sees Nexus as a single app."
+  "mixer.hint": "Applied inside each service. Windows sees Nexus as a single app.",
+  "ctx.volumeLabel": "Volume — {value}",
+  "ctx.more": "More",
+  "sidebar.mixer": "Volume mixer",
+  "tile.volume": "Volume at {value} %",
+  "tile.muted": "Sound muted"
 }

@@ -14,6 +14,7 @@ const {
   ipcMain,
   clipboard,
   nativeImage,
+  nativeTheme,
   powerMonitor,
 } = require('electron');
 const Store = require('electron-store');
@@ -44,6 +45,7 @@ const PRELOAD_STAGGER_MS = 1500; // delai entre les chargements des services en 
 const UPDATE_INTERVAL_MS = 4 * 60 * 60 * 1000;
 const ICON_PATH = path.join(__dirname, 'assets', 'icon.ico');
 const ICONS_DIR = path.join(__dirname, 'assets', 'icons');
+const MENU_ICONS_DIR = path.join(__dirname, 'assets', 'menu');
 
 const isDev = process.argv.includes('--dev');
 // Passe par l'entree de demarrage Windows quand "demarrer masque" est actif :
@@ -600,6 +602,10 @@ function setMuted(id, muted) {
   const entry = views.get(id);
   if (entry) applyMuteState(entry);
   else log('mute', `${id} : ${muted ? 'coupe' : 'actif'} (service pas charge)`);
+
+  // La pastille de la tuile montre aussi la coupure : sans cette diffusion,
+  // elle resterait sur l'etat d'avant apres un basculement depuis le menu.
+  send('hub:volume', { id, value: volumeOf(id), muted });
 }
 
 // ---------------------------------------------------------------------------
@@ -652,7 +658,7 @@ function setVolume(id, value) {
   if (entry) applyVolume(entry);
   else log('volume', `${id} : ${level} % (service pas charge)`);
 
-  send('hub:volume', { id, value: level });
+  send('hub:volume', { id, value: level, muted: isMuted(id) });
 }
 
 function setMasterVolume(value) {
@@ -2364,6 +2370,16 @@ function moveService(id, delta) {
 }
 
 // Clic droit sur une icone de la sidebar : menu natif.
+/**
+ * Icone d'entree de menu. Windows peint ses menus selon le theme du systeme :
+ * un jeu unique serait invisible sur l'un des deux fonds, d'ou les deux
+ * variantes. createFromPath ramasse le fichier @2x tout seul sur ecran dense.
+ */
+function menuIcon(name) {
+  const theme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+  return nativeImage.createFromPath(path.join(MENU_ICONS_DIR, theme, `${name}.png`));
+}
+
 ipcMain.on('hub:service-menu', (_e, id) => {
   const service = getService(id);
   if (!service) return;
@@ -2372,13 +2388,16 @@ ipcMain.on('hub:service-menu', (_e, id) => {
   const index = order.findIndex((s) => s.id === id);
   const entry = views.get(id);
   const asleep = hibernated.has(id);
+  const volume = volumeOf(id);
 
   const menu = Menu.buildFromTemplate([
     { label: service.name, enabled: false },
     { type: 'separator' },
-    { label: t('ctx.edit'), click: () => send('hub:edit-service', { id }) },
-    { label: t('ctx.delete'), click: () => deleteService(id) },
-    { type: 'separator' },
+
+    // Pas d'icone ici, et c'est deliberé : sous Windows une icone posee sur un
+    // element a cocher peut prendre la place de la coche. On perdrait la
+    // lecture de l'etat, ce que tout le reste cherche justement a rendre
+    // visible.
     {
       label: t('ctx.notifications'),
       type: 'checkbox',
@@ -2388,23 +2407,24 @@ ipcMain.on('hub:service-menu', (_e, id) => {
       // inversait l'enregistrement.
       click: () => setMuted(id, !isMuted(id)),
     },
+
     // Un Menu Electron n'accepte pas de curseur : le reglage fin vit dans le
-    // melangeur, et le menu offre des paliers, suffisants pour le geste courant.
+    // melangeur, et le menu offre des paliers. La valeur est dans le libelle
+    // pour se lire sans ouvrir le sous-menu.
     {
-      label: t('ctx.volume'),
+      label: t('ctx.volumeLabel', { value: volume === 0 ? t('ctx.volumeZero') : `${volume} %` }),
+      icon: menuIcon('volume'),
       submenu: [
-        { label: t('ctx.volumeCurrent', { value: volumeOf(id) }), enabled: false },
-        { type: 'separator' },
         ...[100, 75, 50, 25].map((level) => ({
           label: `${level} %`,
           type: 'radio',
-          checked: volumeOf(id) === level,
+          checked: volume === level,
           click: () => setVolume(id, level),
         })),
         {
           label: t('ctx.volumeZero'),
           type: 'radio',
-          checked: volumeOf(id) === 0,
+          checked: volume === 0,
           click: () => setVolume(id, 0),
         },
         { type: 'separator' },
@@ -2413,20 +2433,32 @@ ipcMain.on('hub:service-menu', (_e, id) => {
     },
     {
       label: asleep ? t('ctx.sleeping') : t('ctx.sleep'),
+      icon: menuIcon('sleep'),
       enabled: Boolean(entry) && id !== activeId && id !== splitId,
       click: () => hibernateService(id, 'demande manuelle'),
     },
+
+    { type: 'separator' },
+
     // Un service qui attend son code se deverrouille d'abord en vue simple.
     ...(id === splitId
-      ? [{ label: t('ctx.splitClose'), click: () => closeSplit('demande manuelle') }]
+      ? [
+          {
+            label: t('ctx.splitClose'),
+            icon: menuIcon('split-right'),
+            click: () => closeSplit('demande manuelle'),
+          },
+        ]
       : [
           {
             label: t('ctx.split'),
+            icon: menuIcon('split-right'),
             enabled: id !== activeId && !needsCode(id),
             click: () => setSplit(id, 'right'),
           },
           {
             label: t('ctx.splitBottom'),
+            icon: menuIcon('split-bottom'),
             enabled: id !== activeId && !needsCode(id),
             click: () => setSplit(id, 'bottom'),
           },
@@ -2436,23 +2468,46 @@ ipcMain.on('hub:service-menu', (_e, id) => {
             ? [{ label: t('menu.view.splitClose'), click: () => closeSplit('demande manuelle') }]
             : []),
         ]),
+
     { type: 'separator' },
-    { label: t('ctx.icon'), click: () => chooseIcon(id) },
-    { label: t('ctx.iconDefault'), enabled: Boolean(storedIcon(id)), click: () => resetIcon(id) },
-    { type: 'separator' },
-    { label: t('ctx.up'), enabled: index > 0, click: () => moveService(id, -1) },
+
+    { label: t('ctx.edit'), icon: menuIcon('edit'), click: () => send('hub:edit-service', { id }) },
+
+    // Ce qu'on fait une fois pour toutes descend d'un cran : l'icone, l'ordre,
+    // le rechargement, les outils de developpement. Quatorze entrees au meme
+    // niveau mettaient "Outils de developpement" au meme rang que "Modifier".
     {
-      label: t('ctx.down'),
-      enabled: index >= 0 && index < order.length - 1,
-      click: () => moveService(id, 1),
+      label: t('ctx.more'),
+      icon: menuIcon('more'),
+      submenu: [
+        { label: t('ctx.icon'), click: () => chooseIcon(id) },
+        { label: t('ctx.iconDefault'), enabled: Boolean(storedIcon(id)), click: () => resetIcon(id) },
+        { type: 'separator' },
+        { label: t('ctx.up'), enabled: index > 0, click: () => moveService(id, -1) },
+        {
+          label: t('ctx.down'),
+          enabled: index >= 0 && index < order.length - 1,
+          click: () => moveService(id, 1),
+        },
+        { type: 'separator' },
+        {
+          label: t('ctx.reload'),
+          enabled: Boolean(entry),
+          click: () => entry?.view.webContents.reload(),
+        },
+        {
+          label: t('ctx.devtools'),
+          enabled: Boolean(entry),
+          click: () => entry?.view.webContents.toggleDevTools(),
+        },
+      ],
     },
+
     { type: 'separator' },
-    { label: t('ctx.reload'), enabled: Boolean(entry), click: () => entry?.view.webContents.reload() },
-    {
-      label: t('ctx.devtools'),
-      enabled: Boolean(entry),
-      click: () => entry?.view.webContents.toggleDevTools(),
-    },
+
+    // Isole en bas : voisine de "Modifier", une action irreversible finit par
+    // etre cliquee par erreur.
+    { label: t('ctx.delete'), icon: menuIcon('delete'), click: () => deleteService(id) },
   ]);
 
   menu.popup({ window: mainWindow });

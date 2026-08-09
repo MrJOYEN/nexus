@@ -1329,3 +1329,107 @@ input[type="color"] {
   line-height: 1.5;
   color: var(--text-dim);
 }
+
+/* --------------------------------------------------- etat sonore de la tuile -- */
+
+/* Symetrique du compteur de non-lus, qui occupe le haut : les deux doivent
+   pouvoir s'afficher ensemble sans se recouvrir. Rien n'apparait a 100 % —
+   l'etat normal ne merite pas de bruit visuel. */
+.service .vol {
+  position: absolute;
+  bottom: 1px;
+  right: 4px;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--sidebar-bg);
+  color: var(--text-dim);
+  display: none;
+  place-items: center;
+}
+
+.service.has-vol .vol {
+  display: grid;
+}
+
+.service .vol.off {
+  color: var(--badge);
+}
+
+.service .vol svg {
+  width: 10px;
+  height: 10px;
+  display: block;
+}
+
+/* Le bouton melangeur est un outil, pas un emplacement a remplir : le trait
+   pointille du bouton d'ajout signifierait autre chose. */
+.action.mixer {
+  border-style: solid;
+  border-color: transparent;
+}
+
+.action.mixer:hover {
+  border-color: var(--divider);
+}
+
+.action svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+  margin: 0 auto;
+}
+
+/* ------------------------------------------------------ repere de la molette -- */
+
+#vol-hud {
+  position: fixed;
+  left: calc(var(--sidebar-width) + 12px);
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--divider);
+  box-shadow: 0 14px 30px -12px rgba(0, 0, 0, 0.65);
+  color: var(--text);
+  font-size: 12px;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+#vol-hud.hidden {
+  display: none !important;
+}
+
+#vol-hud svg {
+  width: 14px;
+  height: 14px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.vol-hud-track {
+  width: 84px;
+  height: 4px;
+  border-radius: 100px;
+  background: var(--divider);
+  overflow: hidden;
+}
+
+#vol-hud-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 100px;
+  transition: width 60ms linear;
+}
+
+#vol-hud-val {
+  width: 40px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+}
