@@ -17,7 +17,6 @@ const {
   powerMonitor,
 } = require('electron');
 const Store = require('electron-store');
-const { autoUpdater } = require('electron-updater');
 const { SERVICE_DEFAULTS, CHROME_UA } = require('./services');
 const { CATALOG } = require('./catalog');
 const { SVG_SCORE, sniffMime, iconWidth, decodeDataUrl } = require('./images');
@@ -26,6 +25,17 @@ const i18n = require('./i18n');
 const { t } = i18n;
 
 const REPO_URL = 'https://github.com/MrJOYEN/nexus';
+const STORE_URL = 'ms-windows-store://pdp/?productid=9PBW3G2B60J6';
+
+// Build Microsoft Store : Electron leve ce drapeau quand le process tourne
+// depuis un paquet MSIX/AppX. Rien a passer au build, c'est l'execution qui
+// tranche — le meme code sert aux deux canaux (installeur NSIS et Store).
+//
+// Trois comportements en dependent, et chacun casse quelque chose s'il est
+// laisse tel quel dans un paquet : l'identite Windows (notifications), la mise
+// a jour automatique (interdite, le Store s'en charge) et le lancement au
+// demarrage (registre virtualise).
+const isStore = process.windowsStore === true;
 
 const SIDEBAR_WIDTH = 68; // doit rester synchro avec --sidebar-width dans renderer/style.css
 const LOAD_TIMEOUT_MS = 15000; // au-dela, on affiche le bouton "Reessayer"
@@ -188,7 +198,17 @@ function slugify(text) {
 // et la barre des taches afficherait le logo Electron.
 //
 // A definir AVANT app.whenReady().
-app.setAppUserModelId(app.isPackaged ? 'com.mehdi.nexus' : 'com.mehdi.nexus.dev');
+//
+// Sauf dans un paquet MSIX : l'identite y est imposee par le manifeste et vaut
+// <PackageFamilyName>!<ApplicationId>, soit
+//   MehdiJoyen.NexusMessenger_6sysvkg83wmrg!Nexus
+// La reecrire avec l'ancien 'com.mehdi.nexus' ferait emettre les toasts sous une
+// identite que Windows n'associe a aucun paquet installe : ils cesseraient
+// simplement de s'afficher, sans erreur ni trace. Windows renseigne deja la
+// bonne valeur, on ne touche a rien.
+if (!isStore) {
+  app.setAppUserModelId(app.isPackaged ? 'com.mehdi.nexus' : 'com.mehdi.nexus.dev');
+}
 
 // Une seule instance : un 2e lancement reveille la fenetre existante.
 if (!app.requestSingleInstanceLock()) {
@@ -1303,13 +1323,43 @@ function refreshTrayTooltip() {
 // Mise a jour automatique (GitHub Releases via electron-updater)
 // ---------------------------------------------------------------------------
 
+/**
+ * electron-updater n'est charge qu'en cas de besoin reel. Dans un paquet MSIX
+ * ce require n'a jamais lieu : le module n'est pas seulement neutralise, il
+ * n'est pas instancie.
+ */
+let updaterInstance = null;
+function updater() {
+  if (!updaterInstance) updaterInstance = require('electron-updater').autoUpdater;
+  return updaterInstance;
+}
+
+/**
+ * Le canal de mise a jour est-il actif ? Non dans un paquet MSIX : le Store
+ * distribue les mises a jour, et une application empaquetee n'a de toute facon
+ * pas le droit de reecrire son propre paquet — le dossier d'installation est en
+ * lecture seule. Laisser electron-updater tourner en plus du Store, c'est le
+ * piege classique du portage Electron vers MSIX : telechargement d'une release
+ * GitHub qui ne s'appliquera jamais, puis echec silencieux a l'installation.
+ */
+function canSelfUpdate() {
+  return app.isPackaged && !isStore;
+}
+
 function setupUpdater() {
+  if (isStore) {
+    log('update', 'ignore : paquet Microsoft Store, les mises a jour passent par le Store');
+    return;
+  }
+
   // Hors packaging il n'y a pas de version installee a remplacer : electron-updater
   // chercherait un dev-app-update.yml inexistant et jetterait a chaque demarrage.
   if (!app.isPackaged) {
     log('update', 'ignore : application non packagee');
     return;
   }
+
+  const autoUpdater = updater();
 
   autoUpdater.logger = {
     info: (message) => log('update', message),
@@ -1343,10 +1393,10 @@ function setupUpdater() {
 }
 
 function installUpdate() {
-  if (!pendingUpdate) return;
+  if (!pendingUpdate || !canSelfUpdate()) return;
   log('update', `installation de ${pendingUpdate}`);
   isQuitting = true; // sinon le close-to-tray empecherait le redemarrage
-  autoUpdater.quitAndInstall();
+  updater().quitAndInstall();
 }
 
 // ---------------------------------------------------------------------------
@@ -1384,6 +1434,13 @@ async function showAbout() {
 }
 
 function checkForUpdatesManually() {
+  // Dans le paquet Store, "verifier les mises a jour" n'a pas de sens cote app :
+  // on renvoie vers la fiche produit, seule surface qui puisse en installer une.
+  if (isStore) {
+    shell.openExternal(STORE_URL);
+    return;
+  }
+
   if (!app.isPackaged) {
     dialog.showMessageBox(mainWindow, {
       type: 'info',
@@ -1398,7 +1455,7 @@ function checkForUpdatesManually() {
   if (pendingUpdate) return installUpdate();
 
   log('update', 'verification manuelle');
-  autoUpdater
+  updater()
     .checkForUpdates()
     .then((result) => {
       if (result?.updateInfo?.version === app.getVersion()) {
@@ -1478,27 +1535,40 @@ function createApplicationMenu() {
           },
         },
         { type: 'separator' },
-        {
-          label: t('menu.file.autostart'),
-          type: 'checkbox',
-          checked: Boolean(store.get('autostart')),
-          click: () => {
-            store.set('autostart', !store.get('autostart'));
-            applyAutostart();
-            createApplicationMenu();
-          },
-        },
-        {
-          label: t('menu.file.autostartHidden'),
-          type: 'checkbox',
-          enabled: Boolean(store.get('autostart')),
-          checked: Boolean(store.get('autostartHidden')),
-          click: () => {
-            store.set('autostartHidden', !store.get('autostartHidden'));
-            applyAutostart();
-            createApplicationMenu();
-          },
-        },
+        // Lancement avec Windows. Dans le paquet MSIX le reglage appartient a
+        // Windows (extension StartupTask du manifeste) : l'app ne peut ni le
+        // lire ni le basculer sans module natif WinRT, elle ouvre donc la page
+        // qui le porte. Une case a cocher y mentirait sur son propre etat.
+        ...(isStore
+          ? [
+              {
+                label: t('menu.file.autostartSettings'),
+                click: () => shell.openExternal('ms-settings:startupapps'),
+              },
+            ]
+          : [
+              {
+                label: t('menu.file.autostart'),
+                type: 'checkbox',
+                checked: Boolean(store.get('autostart')),
+                click: () => {
+                  store.set('autostart', !store.get('autostart'));
+                  applyAutostart();
+                  createApplicationMenu();
+                },
+              },
+              {
+                label: t('menu.file.autostartHidden'),
+                type: 'checkbox',
+                enabled: Boolean(store.get('autostart')),
+                checked: Boolean(store.get('autostartHidden')),
+                click: () => {
+                  store.set('autostartHidden', !store.get('autostartHidden'));
+                  applyAutostart();
+                  createApplicationMenu();
+                },
+              },
+            ]),
         { type: 'separator' },
         {
           label: t('menu.file.lock'),
@@ -1610,7 +1680,10 @@ function createApplicationMenu() {
     {
       label: t('menu.help'),
       submenu: [
-        { label: t('menu.help.updates'), click: checkForUpdatesManually },
+        {
+          label: isStore ? t('menu.help.storePage') : t('menu.help.updates'),
+          click: checkForUpdatesManually,
+        },
         { type: 'separator' },
         { label: t('menu.help.docs'), click: () => shell.openExternal(`${REPO_URL}#readme`) },
         { label: t('menu.help.issue'), click: () => shell.openExternal(`${REPO_URL}/issues/new`) },
@@ -1688,6 +1761,16 @@ function showWindow() {
  * l'app installee l'applique.
  */
 function applyAutostart() {
+  // Dans un paquet MSIX, setLoginItemSettings ecrit sous HKCU\...\Run, une ruche
+  // virtualisee vers le conteneur du paquet. Windows ne la lit pas a l'ouverture
+  // de session : l'appel reussit, le reglage est memorise, et rien ne demarre
+  // jamais. C'est l'extension StartupTask du manifeste qui fait foi, et seul
+  // l'utilisateur peut l'activer (Parametres > Applications > Demarrage).
+  if (isStore) {
+    log('autostart', 'delegue a Windows (extension StartupTask du manifeste MSIX)');
+    return;
+  }
+
   if (!app.isPackaged) return;
   app.setLoginItemSettings({
     openAtLogin: Boolean(store.get('autostart')),

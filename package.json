@@ -23,7 +23,8 @@
     "dev": "electron . --dev",
     "pack": "electron-builder --dir",
     "build": "electron-builder --win",
-    "release": "electron-builder --win --publish always"
+    "release": "electron-builder --win --publish always",
+    "build:store": "electron-builder --win appx --publish never"
   },
   "dependencies": {
     "electron-store": "8.2.0",
@@ -67,6 +68,26 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Nexus"
+    },
+    "appx": {
+      "identityName": "MehdiJoyen.NexusMessenger",
+      "publisher": "CN=3AEA6691-12A7-4EC5-B304-754AC77D0730",
+      "publisherDisplayName": "Mehdi Joyen",
+      "applicationId": "Nexus",
+      "displayName": "Nexus Messenger",
+      "backgroundColor": "#1e1e2e",
+      "languages": [
+        "en-US",
+        "fr-FR",
+        "es-ES"
+      ],
+      "customExtensionsPath": "installer/appx-extensions.xml",
+      "minVersion": "10.0.17763.0",
+      "maxVersionTested": "10.0.19041.0",
+      "showNameOnTiles": false,
+      "electronUpdaterAware": false,
+      "setBuildNumber": false,
+      "artifactName": "${productName}-${version}-store.msix"
     },
     "artifactName": "${productName}-Setup-${version}.${ext}",
     "publish": [
