@@ -5,7 +5,7 @@
   "description": "All your web apps in one window, each account in its own isolated session.",
   "author": "Mehdi Joyen",
   "license": "MIT",
-  "homepage": "https://github.com/MrJOYEN/nexus",
+  "homepage": "https://nexusdock.app",
   "repository": {
     "type": "git",
     "url": "https://github.com/MrJOYEN/nexus.git"
