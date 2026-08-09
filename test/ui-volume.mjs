@@ -51,7 +51,7 @@ console.log(`profil en "${lang}", service teste : ${ID} = "${name}"\n`);
 
 // --- surfaces visibles -------------------------------------------------------
 check('bouton melangeur present', await ev('Boolean(document.getElementById("mixer-btn"))'));
-check('repere de molette present', await ev('Boolean(document.getElementById("vol-hud"))'));
+check('repere de molette present', await ev(`Boolean(${TILE}.querySelector(".vol-gauge"))`));
 
 const btnTitle = await ev('document.getElementById("mixer-btn").title');
 check('infobulle du bouton traduite', Boolean(btnTitle) && btnTitle !== 'sidebar.mixer', btnTitle);
@@ -87,15 +87,32 @@ await sleep(150);
 
 const tWheel = await ev(`${VOL}.title`);
 check('la molette monte le volume de 5', tWheel.includes('55'), tWheel);
-check('le repere s affiche', (await ev('document.getElementById("vol-hud").classList.contains("hidden")')) === false);
-check('le repere montre la valeur', (await ev('document.getElementById("vol-hud-val").textContent')) === '55 %');
+check('le repere s affiche', (await ev(`${TILE}.classList.contains("tuning")`)) === true);
+check('le repere montre la valeur', (await ev(`${TILE}.querySelector(".vol-gauge-val").textContent`)) === '55');
+
+// Le controle qui compte. Au-dela de la sidebar commence la vue du service,
+// une couche native peinte par-dessus le HTML : un repere pose la resterait
+// dans le DOM, repondrait aux mesures, et ne s'afficherait jamais. Verifier
+// qu'il n'est pas "hidden" ne prouve donc rien — il faut sa geometrie.
+const inside = await ev(`(() => {
+  const strip = document.getElementById('sidebar').getBoundingClientRect();
+  const gauge = ${TILE}.querySelector('.vol-gauge').getBoundingClientRect();
+  return JSON.stringify({
+    ok: gauge.width > 0 && gauge.height > 0 && gauge.right <= strip.right + 1,
+    gauge: Math.round(gauge.right),
+    strip: Math.round(strip.right),
+  });
+})()`);
+const geo = JSON.parse(inside);
+check('le repere tient dans la sidebar, hors de la couche native', geo.ok,
+  `bord droit ${geo.gauge}px, sidebar ${geo.strip}px`);
 
 await ev(`${TILE}.dispatchEvent(new WheelEvent("wheel", { deltaY: 100, bubbles: true, cancelable: true }))`);
 await sleep(150);
 check('la molette redescend', (await ev(`${VOL}.title`)).includes('50'), await ev(`${VOL}.title`));
 
 await sleep(1300);
-check('le repere disparait tout seul', (await ev('document.getElementById("vol-hud").classList.contains("hidden")')) === true);
+check('le repere disparait tout seul', (await ev(`${TILE}.classList.contains("tuning")`)) === false);
 
 // --- panneau melangeur -------------------------------------------------------
 await ev('document.getElementById("mixer-btn").click()');

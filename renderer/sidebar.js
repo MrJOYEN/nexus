@@ -140,7 +140,14 @@ function renderSidebar(services) {
     const vol = document.createElement('span');
     vol.className = 'vol';
 
-    el.append(avatar, chip, badge, vol);
+    // Repere de la molette, pose sur l'avatar le temps du geste.
+    const gauge = document.createElement('span');
+    gauge.className = 'vol-gauge';
+    gauge.innerHTML =
+      '<span class="vol-gauge-val"></span>' +
+      '<span class="vol-gauge-track"><span class="vol-gauge-fill"></span></span>';
+
+    el.append(avatar, chip, badge, vol, gauge);
     el.addEventListener('click', () => select(service.id));
     el.addEventListener('contextmenu', (event) => {
       event.preventDefault();
@@ -1596,31 +1603,34 @@ function adjustVolume(id, delta) {
 
   item.service.volume = next;
   refreshVolumeTile(id);
-  showVolumeHud(item.el, next);
+  showVolumeGauge(item.el, next);
   pushVolume(id);
 }
 
 /* --- Repere fugace --------------------------------------------------------- */
 
-const volHud = document.getElementById('vol-hud');
-const volHudFill = document.getElementById('vol-hud-fill');
-const volHudVal = document.getElementById('vol-hud-val');
-let volHudTimer = null;
+/**
+ * Le repere se pose sur l'avatar, et pas a cote de la sidebar : au-dela des
+ * 68 px commence la vue du service, une couche native que le systeme peint
+ * par-dessus le HTML de la fenetre. Un repere pose la existe dans le DOM,
+ * repond aux mesures, et reste invisible a l'ecran.
+ */
+let gaugeTimer = null;
+let gaugeTile = null;
 
-function showVolumeHud(tile, value) {
-  const rect = tile.getBoundingClientRect();
-  // Centre sur la tuile, puis borne pour ne pas sortir de la fenetre quand le
-  // service vise est tout en haut ou tout en bas de la sidebar.
-  const top = Math.min(
-    window.innerHeight - 52,
-    Math.max(8, rect.top + rect.height / 2 - 19)
-  );
+function showVolumeGauge(tile, value) {
+  // Molette passee d'une tuile a l'autre sans laisser le temps au precedent
+  // repere de s'effacer : deux valeurs affichees en meme temps.
+  if (gaugeTile && gaugeTile !== tile) gaugeTile.classList.remove('tuning');
+  gaugeTile = tile;
 
-  volHud.style.top = `${Math.round(top)}px`;
-  volHudFill.style.width = `${value}%`;
-  volHudVal.textContent = value === 0 ? t('mixer.muted') : `${value} %`;
-  volHud.classList.remove('hidden');
+  tile.querySelector('.vol-gauge-val').textContent = value;
+  tile.querySelector('.vol-gauge-fill').style.width = `${value}%`;
+  tile.classList.add('tuning');
 
-  clearTimeout(volHudTimer);
-  volHudTimer = setTimeout(() => volHud.classList.add('hidden'), 1100);
+  clearTimeout(gaugeTimer);
+  gaugeTimer = setTimeout(() => {
+    tile.classList.remove('tuning');
+    gaugeTile = null;
+  }, 1100);
 }
