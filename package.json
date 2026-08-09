@@ -1,7 +1,7 @@
 {
   "name": "nexus",
   "productName": "Nexus",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "All your web apps in one window, each account in its own isolated session.",
   "author": "Mehdi Joyen",
   "license": "MIT",
@@ -24,7 +24,7 @@
     "pack": "electron-builder --dir",
     "build": "electron-builder --win",
     "release": "electron-builder --win --publish always",
-    "build:store": "electron-builder --win appx --publish never"
+    "build:store": "electron-builder --win appx --publish never --config electron-builder.store.js"
   },
   "dependencies": {
     "electron-store": "8.2.0",
@@ -48,7 +48,8 @@
       "!docs/**",
       "!test/**",
       "!**/*.md",
-      "!.*"
+      "!.*",
+      "!electron-builder.*"
     ],
     "win": {
       "target": [

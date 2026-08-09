@@ -50,7 +50,14 @@ const isDev = process.argv.includes('--dev');
 const startHidden = process.argv.includes('--hidden');
 
 function log(scope, ...args) {
-  console.log(`[${new Date().toTimeString().slice(0, 8)}] [${scope}]`, ...args);
+  // La sortie standard d'une application packagee n'est raccordee a rien, et
+  // peut se rompre en cours de route : terminal ferme, tuyau casse. L'ecriture
+  // leve alors EPIPE, et une exception non capturee dans le process principal
+  // se traduit par une boite d'erreur fatale d'Electron. On ne perd pas
+  // l'application pour une ligne de journal.
+  try {
+    console.log(`[${new Date().toTimeString().slice(0, 8)}] [${scope}]`, ...args);
+  } catch {}
 }
 
 /** id -> { service, view, status, message, timer, hibernateTimer, badge, iconScore } */

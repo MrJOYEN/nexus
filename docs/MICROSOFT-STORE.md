@@ -16,6 +16,21 @@ Les deux canaux coexistent et ne se croisent jamais :
 prime sur `win.target`, et `--publish never` pour qu'aucun artefact Store ne
 parte vers GitHub. La cible `nsis` n'est pas touchee.
 
+Il passe aussi `--config electron-builder.store.js`. Ce fichier reprend la
+configuration de `package.json` — qui reste la source unique — et y ajoute la
+seule difference d'empaquetage : l'exclusion d'`electron-updater`, inutile dans
+un paquet Store. `files` ne se configurant pas par cible, et l'ecraser en ligne
+de commande (`-c.files.7=...`) produisant un objet la ou le schema attend un
+tableau, `--config` est la voie propre.
+
+## Versions
+
+`package.json` garde un semver a trois nombres. electron-builder en derive la
+version a quatre du manifeste en ajoutant la revision : `1.0.1` donne
+`1.0.1.0`. **Le Store exige cette revision a zero**, d'ou `setBuildNumber:
+false` — l'activer y mettrait un numero de build et ferait rejeter le paquet.
+Ne jamais ecrire une version a quatre nombres a la main.
+
 ## Identite du paquet
 
 Relevee dans Partner Center (Product management > Product identity) et recopiee
@@ -190,13 +205,12 @@ balayage de chaines, et les trouve dans les fichiers de donnees de Chromium
 `CreateProcessW` de `Nexus.exe` est inherent a Electron, et permis a un paquet
 `runFullTrust`.
 
-Trois occurrences sont reelles, dans `app.asar` : `powershell`, `cmd`, `CsI`.
-Elles viennent de `electron-updater/out/windowsExecutableCodeSignatureVerifier.js`,
-embarque dans l'asar bien que le build Store ne le charge jamais. Les faire
-disparaitre demanderait d'exclure `electron-updater` du paquet Store, ce que
-`files` ne permet pas par cible — il faudrait passer la configuration par un
-fichier JS pilote par une variable d'environnement. Non fait : le gain est
-cosmetique sur un test optionnel.
+Trois occurrences etaient reelles, dans `app.asar` : `powershell`, `cmd`, `CsI`.
+Elles venaient de
+`electron-updater/out/windowsExecutableCodeSignatureVerifier.js`, embarque dans
+l'asar bien que le build Store ne le charge jamais. **Corrige depuis la 1.0.1**
+en excluant `electron-updater` du paquet Store (voir plus bas). Le canal NSIS le
+conserve : il en depend pour sa mise a jour automatique.
 
 Le WARNING DPI est un artefact. Le rapport annonce « Impossible de traiter le
 binaire » avant de conclure a l'absence de compatibilite DPI, alors que
