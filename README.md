@@ -30,6 +30,8 @@ Discord accounts and anything else. They never sign each other out.
 
 - Isolated session per service: cookies, storage and logins never mix
 - Native Windows notifications, with per-service mute (sound included)
+- A volume level per service, with a mixer panel and a master level. Scroll over
+  an icon to adjust it; the sidebar shows which services are turned down
 - Unread badges in the sidebar, on the taskbar icon and on the tray icon
 - A catalogue of popular services with their real logos, plus any custom URL
 - Split view: two services side by side or stacked, with a draggable divider
@@ -61,6 +63,7 @@ remove it.
 | `Ctrl+1` to `Ctrl+9` | Switch to the Nth service |
 | `Ctrl+N` | Add a service |
 | `Ctrl+R` | Reload the active service |
+| `Ctrl+M` | Open the volume mixer |
 | `Ctrl+L` | Lock Nexus (once a code is set) |
 | `Ctrl+Q` | Quit (the close button only hides to the tray) |
 | `Alt` | Show the menu bar |
@@ -71,9 +74,14 @@ Requires Node.js 20 or newer.
 
 ```bash
 npm install
-npm start        # run in development
-npm run build    # build the Windows installer into dist/
+npm start            # run in development
+npm run build        # build the Windows installer into dist/
+npm run build:store  # build the MSIX package for the Microsoft Store
 ```
+
+The two channels never cross: the installer updates itself through GitHub
+Releases, the Store package leaves that to the Store. See
+[docs/MICROSOFT-STORE.md](docs/MICROSOFT-STORE.md).
 
 Architecture notes, design decisions and troubleshooting live in
 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Issues and pull requests are
