@@ -175,6 +175,46 @@ Fait et mesure sur le paquet installe en sideload :
 - Le paquet demarre et reprend le profil existant.
 - Aucune ecriture hors du dossier de donnees.
 
+### Windows App Certification Kit
+
+Passe sur le paquet installe, type detecte « Centennial ». **22 PASS, 1 FAIL,
+1 WARNING.**
+
+Le FAIL porte sur « Fichiers executables bloques », test marque
+`OPTIONAL="TRUE"`. Sur 25 messages, 23 sont des faux positifs : WACK cherche des
+noms d'executables interdits (`reg`, `cmd`, `bash`, `csi`, `cdb`, `dnx`) par
+balayage de chaines, et les trouve dans les fichiers de donnees de Chromium
+(`icudtl.dat`, `resources.pak`, `*.pak`, `d3dcompiler_47.dll`,
+`vk_swiftshader.dll`, `dxcompiler.dll`). La casse le trahit : « CsI », « CDb »,
+« rEG », « BasH » sont des sequences d'octets, pas des references. Le
+`CreateProcessW` de `Nexus.exe` est inherent a Electron, et permis a un paquet
+`runFullTrust`.
+
+Trois occurrences sont reelles, dans `app.asar` : `powershell`, `cmd`, `CsI`.
+Elles viennent de `electron-updater/out/windowsExecutableCodeSignatureVerifier.js`,
+embarque dans l'asar bien que le build Store ne le charge jamais. Les faire
+disparaitre demanderait d'exclure `electron-updater` du paquet Store, ce que
+`files` ne permet pas par cible — il faudrait passer la configuration par un
+fichier JS pilote par une variable d'environnement. Non fait : le gain est
+cosmetique sur un test optionnel.
+
+Le WARNING DPI est un artefact. Le rapport annonce « Impossible de traiter le
+binaire » avant de conclure a l'absence de compatibilite DPI, alors que
+`Nexus.exe` declare `dpiAware>true/pm`. Le seul test obligatoire du lot n'a donc
+produit qu'un avertissement infonde.
+
+Pour rejouer, en console administrateur :
+
+```powershell
+$appcert = "C:\Program Files (x86)\Windows Kits\10\App Certification Kit\appcert.exe"
+& $appcert reset
+& $appcert test -packagefullname MehdiJoyen.NexusMessenger_1.0.0.0_x64__6sysvkg83wmrg -reportoutputpath .\dist\wack-report.xml
+```
+
+WACK deploie le paquet pour le tester : il lui faut donc le paquet **signe**, ou
+comme ici celui deja installe. Le `-store.msix` non signe ne peut pas etre teste
+directement.
+
 Reste a valider a la main, faute de pouvoir l'automatiser :
 
 - Affichage d'un toast sur message entrant (la fonction phare).
