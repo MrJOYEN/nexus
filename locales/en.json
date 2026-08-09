@@ -164,5 +164,16 @@
   "ob.pickHint": "Choose what you use every day. You can add several accounts of the same service later, and they will never sign each other out.",
   "ob.skip": "Start empty",
   "ob.start": "Start with {count}",
-  "ob.startNone": "Select at least one service"
+  "ob.startNone": "Select at least one service",
+  "menu.view.mixer": "Volume mixer…",
+  "ctx.volume": "Volume",
+  "ctx.volumeCurrent": "Currently {value} %",
+  "ctx.volumeZero": "Muted",
+  "ctx.mixer": "Open the mixer…",
+  "mixer.title": "Volume mixer",
+  "mixer.count": "{count} services",
+  "mixer.all": "All",
+  "mixer.muted": "Muted",
+  "mixer.close": "Close",
+  "mixer.hint": "Applied inside each service. Windows sees Nexus as a single app."
 }

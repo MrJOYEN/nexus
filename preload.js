@@ -23,6 +23,18 @@ contextBridge.exposeInMainWorld('hub', {
   /** Menu natif du clic droit sur une icone de service. */
   serviceMenu: (id) => ipcRenderer.send('hub:service-menu', id),
 
+  /** Volume d'un service, de 0 a 100. Applique dans la page, pas par Windows. */
+  setVolume: (id, value) => ipcRenderer.send('hub:set-volume', { id, value }),
+
+  /** Volume general, applique par-dessus celui de chaque service. */
+  setMasterVolume: (value) => ipcRenderer.send('hub:set-master-volume', value),
+
+  /** Volume change ailleurs : sous-menu du clic droit, autre surface. */
+  onVolume: (callback) => on('hub:volume', callback),
+
+  /** Ouverture du melangeur, demandee depuis un menu natif. */
+  onOpenMixer: (callback) => on('hub:open-mixer', callback),
+
   /** Cree ou met a jour un service -> { ok } ou { error }. */
   saveService: (draft) => ipcRenderer.invoke('hub:service-save', draft),
 

@@ -13,6 +13,7 @@ const addButton = document.getElementById('add-btn');
 const updateButton = document.getElementById('update-btn');
 
 const modal = document.getElementById('modal');
+const mixer = document.getElementById('mixer');
 const picker = document.getElementById('picker');
 const catalogGrid = document.getElementById('catalog-grid');
 const catalogEmpty = document.getElementById('catalog-empty');
@@ -55,6 +56,8 @@ let editingId = null;
 let catalog = [];
 let catalogIcons = {};
 let strings = {};
+/** Volume general, module par-dessus celui de chaque service. */
+let masterVolume = 100;
 
 // ---------------------------------------------------------------------------
 // Traduction
@@ -775,7 +778,9 @@ for (const field of [fields.name, fields.initials, fields.color]) {
  */
 function syncModalState() {
   const anyOpen =
-    !modal.classList.contains('hidden') || !lockSetup.classList.contains('hidden');
+    !modal.classList.contains('hidden') ||
+    !lockSetup.classList.contains('hidden') ||
+    !mixer.classList.contains('hidden');
   window.hub.setModalOpen(anyOpen);
 }
 
@@ -1291,6 +1296,7 @@ function startOnboarding() {
   if (boot.activeNeedsCode) showServiceLock(boot.activeId);
   if (boot.splitId) setSplit(boot.splitId);
   showUpdate(boot.update);
+  masterVolume = Number.isFinite(boot.masterVolume) ? boot.masterVolume : 100;
   if (boot.locked) setLocked(true);
   if (boot.onboarding) startOnboarding();
 
@@ -1329,5 +1335,169 @@ function startOnboarding() {
     if (!modal.classList.contains('hidden')) renderCatalog(searchInput.value);
     if (editingId) refreshProtectButton();
     if (activeId) refreshOverlay();
+  });
+})();
+
+/* ------------------------------------------------------------------------- */
+/* Melangeur de volume                                                        */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * Le reglage fin vit ici parce qu'un Menu Electron n'accepte pas de curseur :
+ * le sous-menu du clic droit n'offre que des paliers. Les deux surfaces lisent
+ * et ecrivent le meme etat cote main, et se resynchronisent par hub:volume.
+ */
+(() => {
+  const rowsEl = document.getElementById('mixer-rows');
+  const countEl = document.getElementById('mixer-count');
+  const closeEl = document.getElementById('mixer-close');
+
+  /** id de service -> { row, slider, pct }, pour les mises a jour ciblees. */
+  const rows = new Map();
+  let masterRow = null;
+
+  function paint(row, slider, pct, value) {
+    slider.style.setProperty('--pct', `${value}%`);
+    row.classList.toggle('off', value === 0);
+    pct.textContent = value === 0 ? t('mixer.muted') : `${value} %`;
+  }
+
+  function buildRow({ id, name, initials, color, dataUrl, value, onInput }) {
+    const row = document.createElement('div');
+    row.className = id ? 'mixer-row' : 'mixer-row master';
+
+    const chip = document.createElement('span');
+    chip.className = 'mixer-chip';
+    chip.style.background = color;
+
+    if (dataUrl) {
+      const img = document.createElement('img');
+      img.alt = '';
+      img.src = dataUrl;
+      // Une icone illisible laisse les initiales en place plutot qu'un trou.
+      img.addEventListener('error', () => {
+        img.remove();
+        chip.textContent = initials;
+      });
+      chip.append(img);
+    } else {
+      chip.textContent = initials;
+    }
+
+    const label = document.createElement('span');
+    label.className = 'mixer-name';
+    label.textContent = name;
+    label.title = name;
+
+    const slider = document.createElement('input');
+    slider.className = 'mixer-slider';
+    slider.type = 'range';
+    slider.min = '0';
+    slider.max = '100';
+    slider.value = String(value);
+    slider.setAttribute('aria-label', name);
+
+    const pct = document.createElement('span');
+    pct.className = 'mixer-pct';
+
+    slider.addEventListener('input', () => {
+      const next = Number(slider.value);
+      paint(row, slider, pct, next);
+      onInput(next);
+    });
+
+    row.append(chip, label, slider, pct);
+    paint(row, slider, pct, value);
+
+    return { row, slider, pct };
+  }
+
+  function render() {
+    rowsEl.textContent = '';
+    rows.clear();
+
+    const ordered = [...items.values()].map((item) => item.service);
+    countEl.textContent = t('mixer.count', { count: ordered.length });
+
+    masterRow = buildRow({
+      id: null,
+      name: t('mixer.all'),
+      initials: 'NX',
+      color: 'var(--accent)',
+      value: masterVolume,
+      onInput: (value) => {
+        masterVolume = value;
+        window.hub.setMasterVolume(value);
+      },
+    });
+    rowsEl.append(masterRow.row);
+
+    for (const service of ordered) {
+      const entry = buildRow({
+        id: service.id,
+        name: service.name,
+        initials: service.initials,
+        color: service.color,
+        dataUrl: service.dataUrl,
+        value: Number.isFinite(service.volume) ? service.volume : 100,
+        onInput: (value) => {
+          service.volume = value;
+          window.hub.setVolume(service.id, value);
+        },
+      });
+
+      rows.set(service.id, entry);
+      rowsEl.append(entry.row);
+    }
+  }
+
+  function open() {
+    render();
+    mixer.classList.remove('hidden');
+    syncModalState();
+    // Le premier curseur prend le focus : le panneau se pilote entierement au
+    // clavier, fleches comprises.
+    (masterRow?.slider || closeEl).focus();
+  }
+
+  function close() {
+    if (mixer.classList.contains('hidden')) return;
+    mixer.classList.add('hidden');
+    syncModalState();
+  }
+
+  closeEl.addEventListener('click', close);
+
+  // Clic sur le fond, hors du panneau.
+  mixer.addEventListener('mousedown', (event) => {
+    if (event.target === mixer) close();
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') close();
+  });
+
+  window.hub.onOpenMixer(() => open());
+
+  // Le sous-menu du clic droit change la meme valeur : le panneau ouvert doit
+  // suivre sans qu'on le reouvre.
+  window.hub.onVolume(({ id, value, master }) => {
+    if (Number.isFinite(master)) {
+      masterVolume = master;
+      if (masterRow) {
+        masterRow.slider.value = String(master);
+        paint(masterRow.row, masterRow.slider, masterRow.pct, master);
+      }
+      return;
+    }
+
+    const item = items.get(id);
+    if (item) item.service.volume = value;
+
+    const entry = rows.get(id);
+    if (entry) {
+      entry.slider.value = String(value);
+      paint(entry.row, entry.slider, entry.pct, value);
+    }
   });
 })();

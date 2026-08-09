@@ -164,5 +164,16 @@
   "ob.pickHint": "Prends ce que tu utilises au quotidien. Tu pourras ajouter plusieurs comptes du même service ensuite, ils ne se déconnecteront jamais entre eux.",
   "ob.skip": "Commencer sans rien",
   "ob.start": "Commencer avec {count}",
-  "ob.startNone": "Choisis au moins un service"
+  "ob.startNone": "Choisis au moins un service",
+  "menu.view.mixer": "Mélangeur de volume…",
+  "ctx.volume": "Volume",
+  "ctx.volumeCurrent": "Actuellement {value} %",
+  "ctx.volumeZero": "Coupé",
+  "ctx.mixer": "Ouvrir le mélangeur…",
+  "mixer.title": "Mélangeur de volume",
+  "mixer.count": "{count} services",
+  "mixer.all": "Tous",
+  "mixer.muted": "Coupé",
+  "mixer.close": "Fermer",
+  "mixer.hint": "Appliqué dans chaque service. Windows ne voit qu’une seule application."
 }

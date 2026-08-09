@@ -175,6 +175,24 @@
       </div>
     </main>
 
+    <!-- Melangeur de volume, ouvert depuis Affichage ou le sous-menu Volume du
+         clic droit. Comme les autres modales, il escamote les vues natives : sans
+         ca les WebContentsView passeraient par-dessus. Les lignes sont produites
+         par sidebar.js a chaque ouverture. -->
+    <div id="mixer" class="hidden">
+      <div id="mixer-panel" role="dialog" aria-modal="true" aria-labelledby="mixer-title">
+        <header class="mixer-head">
+          <h1 id="mixer-title" data-i18n="mixer.title">Volume mixer</h1>
+          <span id="mixer-count"></span>
+          <button id="mixer-close" type="button" class="ghost" aria-label="Close" data-i18n-title="mixer.close">&times;</button>
+        </header>
+
+        <div id="mixer-rows"></div>
+
+        <p class="mixer-hint" data-i18n="mixer.hint"></p>
+      </div>
+    </div>
+
     <!-- Formulaire du code de verrouillage (definir / changer / supprimer),
          ouvert depuis le menu Fichier. La vue du service est escamotee pendant
          qu'il est visible, comme pour le formulaire de service. -->

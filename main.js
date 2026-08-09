@@ -20,6 +20,7 @@ const Store = require('electron-store');
 const { SERVICE_DEFAULTS, CHROME_UA } = require('./services');
 const { CATALOG } = require('./catalog');
 const { SVG_SCORE, sniffMime, iconWidth, decodeDataUrl } = require('./images');
+const { volumePatch } = require('./audio');
 const catalogIcons = require('./catalog-icons');
 const i18n = require('./i18n');
 const { t } = i18n;
@@ -95,6 +96,10 @@ const store = new Store({
     order: [],
     // id -> true : services dont les notifications sont coupees.
     muted: {},
+    // id -> 0..100 : volume par service. Absent = 100, aucun gain applique.
+    volumes: {},
+    // Volume general, applique par-dessus celui de chaque service.
+    masterVolume: 100,
     // 'system' ou un code de langue disponible ('en', 'fr', 'es').
     language: 'system',
     // Lancement avec Windows, et demarrage masque dans la zone de notification.
@@ -598,6 +603,71 @@ function setMuted(id, muted) {
 }
 
 // ---------------------------------------------------------------------------
+// Volume par service
+// ---------------------------------------------------------------------------
+
+// Le gain lui-meme vit dans audio.js : il s'evalue dans la page, pas ici, et
+// le sortir d'ici le rend testable sans lancer l'application entiere.
+
+function clampVolume(value, fallback) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(100, Math.max(0, Math.round(number)));
+}
+
+/** Volume d'un service, de 0 a 100. Jamais enregistre = 100. */
+function volumeOf(id) {
+  return clampVolume(store.get('volumes')?.[id], 100);
+}
+
+/** Volume general, de 0 a 100. */
+function masterVolume() {
+  return clampVolume(store.get('masterVolume'), 100);
+}
+
+/**
+ * Ce qui arrive vraiment a la page : le volume du service, module par le
+ * general. Les deux sont stockes separement, et c'est ce qui permet au curseur
+ * general de restituer exactement l'equilibre d'origine quand on le remonte —
+ * recalculer les valeurs individuelles les ecraserait sans retour possible.
+ */
+function effectiveLevel(id) {
+  return (volumeOf(id) / 100) * (masterVolume() / 100);
+}
+
+function applyVolume(entry) {
+  const id = entry.service.id;
+
+  entry.view.webContents
+    .executeJavaScript(volumePatch(effectiveLevel(id)), true)
+    .then((applied) => log('volume', `${id} : ${applied}`))
+    .catch((err) => log('volume', `${id} : patch impossible (${err.message})`));
+}
+
+function setVolume(id, value) {
+  const level = clampVolume(value, 100);
+  store.set('volumes', { ...store.get('volumes'), [id]: level });
+
+  const entry = views.get(id);
+  if (entry) applyVolume(entry);
+  else log('volume', `${id} : ${level} % (service pas charge)`);
+
+  send('hub:volume', { id, value: level });
+}
+
+function setMasterVolume(value) {
+  const level = clampVolume(value, 100);
+  store.set('masterVolume', level);
+  log('volume', `general : ${level} %`);
+
+  // Le general ne touche a aucune valeur stockee des services : il change
+  // seulement ce qui arrive aux pages, d'ou la reapplication de toutes les vues.
+  for (const entry of views.values()) applyVolume(entry);
+
+  send('hub:volume', { master: level });
+}
+
+// ---------------------------------------------------------------------------
 // Vues de service (WebContentsView, remplacant de BrowserView depuis Electron 30)
 // ---------------------------------------------------------------------------
 
@@ -656,7 +726,12 @@ function createServiceView(service) {
 
   // dom-ready plutot que did-finish-load : on veut envelopper Notification avant
   // que le site n'en garde une reference.
-  wc.on('dom-ready', () => applyMuteState(entry));
+  wc.on('dom-ready', () => {
+    applyMuteState(entry);
+    // Meme moment que le patch des notifications : la page a pu recreer ses
+    // elements audio, et un rechargement remet tout a plat cote page.
+    applyVolume(entry);
+  });
 
   // Menu contextuel dans les zones de saisie : c'est la que vivent les
   // suggestions du correcteur. Ailleurs on ne fait rien — beaucoup de webapps
@@ -1661,6 +1736,12 @@ function createApplicationMenu() {
           click: () => closeSplit('menu'),
         },
         { type: 'separator' },
+        {
+          label: t('menu.view.mixer'),
+          accelerator: 'CommandOrControl+M',
+          click: () => send('hub:open-mixer', {}),
+        },
+        { type: 'separator' },
         { role: 'togglefullscreen', label: t('menu.view.fullscreen') },
         {
           label: t('menu.view.devtoolsService'),
@@ -1925,6 +2006,7 @@ function serviceForRenderer(service) {
     preload: service.preload !== false,
     hibernateAfter: Number(service.hibernateAfter) || 0,
     muted: isMuted(service.id),
+    volume: volumeOf(service.id),
     hibernating: hibernated.has(service.id),
     protected: isProtected(service.id),
     ...resolveIcon(service),
@@ -2104,9 +2186,16 @@ ipcMain.handle('hub:bootstrap', () => ({
   catalog: CATALOG.map((entry) => ({ ...entry, iconKey: catalogIcons.keyOf(entry) })),
   catalogIcons: catalogIcons.known(),
   update: pendingUpdate ? { state: 'ready', version: pendingUpdate } : null,
+  masterVolume: masterVolume(),
   // Base servant a composer l'icone du tray avec le compteur par-dessus.
   trayBase: nativeImage.createFromPath(ICON_PATH).resize({ width: 64, height: 64 }).toDataURL(),
 }));
+
+ipcMain.on('hub:set-volume', (_e, { id, value } = {}) => {
+  if (getService(id)) setVolume(id, value);
+});
+
+ipcMain.on('hub:set-master-volume', (_e, value) => setMasterVolume(value));
 
 ipcMain.handle('hub:service-save', (_e, draft) => saveService(draft || {}));
 ipcMain.handle('hub:service-delete', (_e, id) => deleteService(id));
@@ -2298,6 +2387,29 @@ ipcMain.on('hub:service-menu', (_e, id) => {
       // le handler recoit la valeur d'avant ou d'apres la bascule, ce qui
       // inversait l'enregistrement.
       click: () => setMuted(id, !isMuted(id)),
+    },
+    // Un Menu Electron n'accepte pas de curseur : le reglage fin vit dans le
+    // melangeur, et le menu offre des paliers, suffisants pour le geste courant.
+    {
+      label: t('ctx.volume'),
+      submenu: [
+        { label: t('ctx.volumeCurrent', { value: volumeOf(id) }), enabled: false },
+        { type: 'separator' },
+        ...[100, 75, 50, 25].map((level) => ({
+          label: `${level} %`,
+          type: 'radio',
+          checked: volumeOf(id) === level,
+          click: () => setVolume(id, level),
+        })),
+        {
+          label: t('ctx.volumeZero'),
+          type: 'radio',
+          checked: volumeOf(id) === 0,
+          click: () => setVolume(id, 0),
+        },
+        { type: 'separator' },
+        { label: t('ctx.mixer'), click: () => send('hub:open-mixer', { id }) },
+      ],
     },
     {
       label: asleep ? t('ctx.sleeping') : t('ctx.sleep'),
