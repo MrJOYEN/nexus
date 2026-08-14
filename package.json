@@ -5,13 +5,13 @@
   "description": "All your web apps in one window, each account in its own isolated session.",
   "author": "Mehdi Joyen",
   "license": "MIT",
-  "homepage": "https://nexusdock.app",
+  "homepage": "https://nexusmessenger.app",
   "repository": {
     "type": "git",
-    "url": "https://github.com/MrJOYEN/nexus.git"
+    "url": "https://github.com/MrJOYEN/nexus-messenger.git"
   },
   "bugs": {
-    "url": "https://github.com/MrJOYEN/nexus/issues"
+    "url": "https://github.com/MrJOYEN/nexus-messenger/issues"
   },
   "private": true,
   "main": "main.js",
@@ -95,7 +95,7 @@
       {
         "provider": "github",
         "owner": "MrJOYEN",
-        "repo": "nexus"
+        "repo": "nexus-messenger"
       }
     ]
   }

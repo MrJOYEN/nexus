@@ -1,9 +1,9 @@
-# Nexus
+# Nexus Messenger
 
 One window for all the web apps you keep open all day.
 
-[![Latest release](https://img.shields.io/github/v/release/MrJOYEN/nexus)](https://github.com/MrJOYEN/nexus/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/MrJOYEN/nexus/total)](https://github.com/MrJOYEN/nexus/releases)
+[![Latest release](https://img.shields.io/github/v/release/MrJOYEN/nexus-messenger)](https://github.com/MrJOYEN/nexus-messenger/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/MrJOYEN/nexus-messenger/total)](https://github.com/MrJOYEN/nexus-messenger/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 Nexus is a lightweight desktop hub for Windows. Each service runs in its own
@@ -46,7 +46,7 @@ Discord accounts and anything else. They never sign each other out.
 ## Install
 
 1. Download the latest `Nexus-Setup-x.y.z.exe` from the
-   [Releases page](https://github.com/MrJOYEN/nexus/releases).
+   [Releases page](https://github.com/MrJOYEN/nexus-messenger/releases).
 2. Run it. Windows SmartScreen will warn about an unknown publisher because
    the installer is not code signed: choose "More info", then "Run anyway".
 3. On first launch, pick your language and the services you use. Everything
