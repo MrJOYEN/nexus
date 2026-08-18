@@ -6,6 +6,13 @@ One window for all the web apps you keep open all day.
 [![Downloads](https://img.shields.io/github/downloads/MrJOYEN/nexus-messenger/total)](https://github.com/MrJOYEN/nexus-messenger/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
+<a href="https://apps.microsoft.com/detail/9PBW3G2B60J6">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://get.microsoft.com/images/en-us%20light.svg">
+    <img alt="Get it from Microsoft" src="https://get.microsoft.com/images/en-us%20dark.svg" height="48">
+  </picture>
+</a>
+
 Nexus is a lightweight desktop hub for Windows. Each service runs in its own
 isolated session, side by side in a single window, with native notifications
 and unread counters.
